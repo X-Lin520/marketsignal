@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Newspaper, TrendingDown, TrendingUp, Minus, Clock, RefreshCw } from "lucide-react";
+import { Newspaper, TrendingDown, TrendingUp, Minus, Clock, RefreshCw, Download } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils/helpers";
 import { useLanguage } from "@/providers/language-provider";
 
@@ -15,6 +15,8 @@ interface DashboardHeaderProps {
   lastRefresh: Date;
   isRefreshing: boolean;
   onRefresh: () => void;
+  isFetching: boolean;
+  onFetchNews: () => void;
 }
 
 function useElapsed(lastRefresh: Date) {
@@ -36,8 +38,10 @@ export function DashboardHeader({
   lastRefresh,
   isRefreshing,
   onRefresh,
+  isFetching,
+  onFetchNews,
 }: DashboardHeaderProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const elapsed = useElapsed(lastRefresh);
   const secondsSinceRefresh = elapsed % 60;
   const minutesSinceRefresh = Math.floor(elapsed / 60);
@@ -50,44 +54,61 @@ export function DashboardHeader({
   ];
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4">
-      <div className="grid grid-cols-2 gap-3 sm:flex sm:gap-6">
-        {stats.map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="flex items-center gap-2">
-            <Icon className={`h-4 w-4 ${color}`} />
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-terminal-text-muted">
-                {label}
-              </div>
-              <div className="text-lg font-semibold tabular-nums leading-tight">
-                {value}
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:gap-6">
+          {stats.map(({ label, value, icon: Icon, color }) => (
+            <div key={label} className="flex items-center gap-2">
+              <Icon className={`h-4 w-4 ${color}`} />
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-terminal-text-muted">
+                  {label}
+                </div>
+                <div className="text-lg font-semibold tabular-nums leading-tight">
+                  {value}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-terminal-text-muted">
+          {lastIngestedAt && (
+            <span className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {t.dashboard.stats.updated} {formatRelativeTime(lastIngestedAt)}
+            </span>
+          )}
+          <span className="tabular-nums text-terminal-text-muted/60">
+            {String(minutesSinceRefresh).padStart(2, "0")}:{String(secondsSinceRefresh).padStart(2, "0")}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className="h-6 w-6"
+            aria-label="Refresh"
+          >
+            <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </div>
 
-      <div className="flex items-center gap-3 text-xs text-terminal-text-muted">
-        {lastIngestedAt && (
-          <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {t.dashboard.stats.updated} {formatRelativeTime(lastIngestedAt)}
-          </span>
-        )}
-        <span className="tabular-nums text-terminal-text-muted/60">
-          {String(minutesSinceRefresh).padStart(2, "0")}:{String(secondsSinceRefresh).padStart(2, "0")}
-        </span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          className="h-6 w-6"
-          aria-label="Refresh"
-        >
-          <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`} />
-        </Button>
-      </div>
+      {/* Fetch News button */}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onFetchNews}
+        disabled={isFetching}
+        className="h-7 w-full text-xs"
+      >
+        <Download className={`mr-1.5 h-3 w-3 ${isFetching ? "animate-spin" : ""}`} />
+        {isFetching
+          ? (language === "zh" ? "正在抓取最新新闻..." : "Fetching latest news...")
+          : (language === "zh" ? "手动抓取最新新闻" : "Fetch Latest News")
+        }
+      </Button>
     </div>
   );
 }

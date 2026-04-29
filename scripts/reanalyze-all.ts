@@ -115,7 +115,7 @@ async function main() {
           data: {
             summary: analysis.summary,
             sentiment: analysis.sentiment,
-            impactSectors: JSON.stringify(analysis.impactSectors),
+            impactSectors: analysis.impactSectors,
             actionableAdvice: analysis.actionableAdvice ?? null,
             analyzedAt: new Date(),
           },

@@ -4,11 +4,8 @@ import { FALLBACK_ANALYSIS } from "./parser";
 
 const CONCURRENCY = 5;
 const BATCH_DELAY_MS = 500;
-const isPostgres = process.env.DATABASE_URL?.startsWith("postgres");
-
-function formatSectors(sectors: string[]): string | string[] {
-  // SQLite stores as JSON string; PostgreSQL stores as native array
-  return isPostgres ? sectors : JSON.stringify(sectors);
+function formatSectors(sectors: string[]): string[] {
+  return sectors;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -74,7 +71,7 @@ export async function runAnalysisPipeline(): Promise<{
           data: {
             summary: analysis.summary,
             sentiment: analysis.sentiment,
-            impactSectors: formatSectors(analysis.impactSectors) as string,
+            impactSectors: formatSectors(analysis.impactSectors),
             actionableAdvice: analysis.actionableAdvice,
             analyzedAt: new Date(),
           },

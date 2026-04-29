@@ -4,11 +4,6 @@ import { analyzeNewsItem } from "@/lib/ai/client";
 import { FALLBACK_ANALYSIS } from "@/lib/ai/parser";
 import { parseSectors } from "@/lib/utils/helpers";
 
-const isPostgres = process.env.DATABASE_URL?.startsWith("postgres");
-
-function formatSectors(sectors: string[]): string | string[] {
-  return isPostgres ? sectors : JSON.stringify(sectors);
-}
 
 export async function POST(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -50,7 +45,7 @@ export async function POST(request: Request) {
       data: {
         summary: analysis.summary,
         sentiment: analysis.sentiment,
-        impactSectors: formatSectors(analysis.impactSectors) as string,
+        impactSectors: analysis.impactSectors,
         actionableAdvice: analysis.actionableAdvice,
         analyzedAt: new Date(),
       },

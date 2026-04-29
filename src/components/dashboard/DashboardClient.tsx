@@ -35,6 +35,7 @@ export function DashboardClient({
   const [stats, setStats] = useState<DashboardStats>(initialStats);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refreshData = useCallback(async () => {
@@ -52,6 +53,27 @@ export function DashboardClient({
       setIsRefreshing(false);
     }
   }, []);
+
+  const fetchNews = useCallback(async () => {
+    setIsFetching(true);
+    try {
+      const secret = process.env.NEXT_PUBLIC_CRON_SECRET || "dev-secret-change-in-production";
+      const res = await fetch("/api/cron/ingest", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${secret}` },
+      });
+      if (res.ok) {
+        const result = await res.json();
+        console.log("Ingest result:", result);
+        // Refresh stats after ingest
+        await refreshData();
+      }
+    } catch (err) {
+      console.error("Fetch news failed:", err);
+    } finally {
+      setIsFetching(false);
+    }
+  }, [refreshData]);
 
   // Auto-poll every 2 minutes
   useEffect(() => {
@@ -82,6 +104,8 @@ export function DashboardClient({
         lastRefresh={lastRefresh}
         isRefreshing={isRefreshing}
         onRefresh={refreshData}
+        isFetching={isFetching}
+        onFetchNews={fetchNews}
       />
 
       <NewsFilter sources={sources} />

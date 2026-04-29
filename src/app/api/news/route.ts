@@ -4,8 +4,6 @@ import { PAGE_SIZE } from "@/lib/utils/constants";
 import { parseSectors } from "@/lib/utils/helpers";
 import type { PaginatedResponse, NewsItemData } from "@/types";
 
-const isPostgres = process.env.DATABASE_URL?.startsWith("postgres");
-
 function deserializeItem(item: {
   id: string;
   title: string;
@@ -49,7 +47,7 @@ export async function GET(request: NextRequest) {
     where.source = source;
   }
   if (sector) {
-    where.impactSectors = isPostgres ? { has: sector } : { contains: sector };
+    where.impactSectors = { has: sector };
   }
 
   // Build orderBy
