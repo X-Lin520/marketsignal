@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model NewsItem {
+  id               String    @id @default(cuid())
+  title            String
+  link             String    @unique
+  source           String
+  publishedAt      DateTime
+  contentSnippet   String?
+
+  // AI Analysis fields — populated after LLM processing
+  summary          String?
+  sentiment        String?   // "Bullish" | "Bearish" | "Neutral" | null
+  impactSectors    String    @default("[]")  // JSON-serialized array
+  actionableAdvice String?
+  analyzedAt       DateTime?
+
+  // Pipeline metadata
+  ingestedAt       DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([publishedAt])
+  @@index([sentiment])
+  @@index([source])
+  @@index([analyzedAt])
+}

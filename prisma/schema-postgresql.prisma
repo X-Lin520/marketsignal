@@ -1,0 +1,43 @@
+// PostgreSQL schema for production (Supabase / Vercel Postgres)
+// Usage: copy this over schema.prisma before deploying
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+enum Sentiment {
+  Bullish
+  Bearish
+  Neutral
+}
+
+model NewsItem {
+  id               String     @id @default(cuid())
+  title            String
+  link             String     @unique
+  source           String
+  publishedAt      DateTime
+  contentSnippet   String?    @db.Text
+
+  // AI Analysis fields
+  summary          String?    @db.Text
+  sentiment        Sentiment?
+  impactSectors    String[]   @default([])
+  actionableAdvice String?    @db.Text
+  analyzedAt       DateTime?
+
+  // Pipeline metadata
+  ingestedAt       DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@index([publishedAt])
+  @@index([sentiment])
+  @@index([source])
+  @@index([analyzedAt])
+}
