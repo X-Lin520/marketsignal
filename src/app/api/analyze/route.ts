@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     }
 
     let analysis;
-    if (process.env.ENABLE_AI !== "true" || !process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === "sk-ant-...") {
+    if (process.env.ENABLE_AI !== "true" || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === "sk-ant-...") {
       analysis = FALLBACK_ANALYSIS;
     } else {
       analysis = await analyzeNewsItem({

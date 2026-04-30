@@ -4,7 +4,7 @@
  */
 
 import { PrismaClient } from "@prisma/client";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { config } from "dotenv";
 import { resolve } from "path";
 
@@ -61,9 +61,9 @@ const CONCURRENCY = 5;
 const BATCH_DELAY_MS = 500;
 
 async function main() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || apiKey === "sk-ant-...") {
-    console.error("ERROR: ANTHROPIC_API_KEY not configured.");
+    console.error("ERROR: OPENAI_API_KEY not configured.");
     process.exit(1);
   }
 
@@ -72,7 +72,7 @@ async function main() {
     process.exit(1);
   }
 
-  const anthropic = new Anthropic({ apiKey });
+  const openai = new OpenAI({ apiKey });
 
   const items = await prisma.newsItem.findMany({
     orderBy: { publishedAt: "desc" },
@@ -97,15 +97,17 @@ async function main() {
           "Analyze this financial news item and return the JSON.",
         ].join("\n");
 
-        const resp = await anthropic.messages.create({
-          model: "claude-sonnet-4-6-20250914",
+        const resp = await openai.chat.completions.create({
+          model: "gpt-4.1-mini",
           max_tokens: 600,
           temperature: 0.1,
-          system: SYSTEM_PROMPT,
-          messages: [{ role: "user", content: userMsg }],
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userMsg },
+          ],
         });
 
-        const text = (resp.content[0] as { text: string }).text;
+        const text = resp.choices[0]?.message?.content || "";
         // Strip markdown fences
         const clean = text.replace(/```(?:json)?\s*([\s\S]*?)\s*```/, "$1").trim();
         const analysis = JSON.parse(clean);

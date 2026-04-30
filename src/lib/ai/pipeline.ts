@@ -14,8 +14,8 @@ function sleep(ms: number): Promise<void> {
 
 function isAiEnabled(): boolean {
   return process.env.ENABLE_AI === "true" &&
-    !!process.env.ANTHROPIC_API_KEY &&
-    process.env.ANTHROPIC_API_KEY !== "sk-ant-...";
+    !!process.env.OPENAI_API_KEY &&
+    process.env.OPENAI_API_KEY !== "sk-ant-...";
 }
 
 async function analyzeWithFallback(title: string, contentSnippet: string | null, source: string) {

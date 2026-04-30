@@ -1,19 +1,19 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { SYSTEM_PROMPT, buildUserMessage } from "./prompt";
 import { parseAiResponse } from "./parser";
 import type { NormalizedItem } from "@/lib/rss/types";
 
-let anthropic: Anthropic | null = null;
+let openai: OpenAI | null = null;
 
-function getClient(): Anthropic {
-  if (!anthropic) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey || apiKey === "sk-ant-...") {
-      throw new Error("ANTHROPIC_API_KEY is not configured");
+function getClient(): OpenAI {
+  if (!openai) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey || apiKey === "sk-...") {
+      throw new Error("OPENAI_API_KEY is not configured");
     }
-    anthropic = new Anthropic({ apiKey });
+    openai = new OpenAI({ apiKey });
   }
-  return anthropic;
+  return openai;
 }
 
 export interface AiAnalysis {
@@ -28,14 +28,16 @@ export async function analyzeNewsItem(
 ): Promise<AiAnalysis> {
   const client = getClient();
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6-20250914",
+  const response = await client.chat.completions.create({
+    model: "gpt-4.1-mini",
     max_tokens: 600,
     temperature: 0.1,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: buildUserMessage(item) }],
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: buildUserMessage(item) },
+    ],
   });
 
-  const text = (response.content[0] as { text: string }).text;
+  const text = response.choices[0]?.message?.content || "";
   return parseAiResponse(text);
 }
