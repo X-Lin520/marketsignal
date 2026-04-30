@@ -10,11 +10,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Reset analyzedAt for items that used the fallback analysis
+  // Reset ALL items for fresh analysis
   const result = await prisma.newsItem.updateMany({
-    where: {
-      summary: { contains: "Unable to analyze" },
-    },
+    where: {},
     data: {
       analyzedAt: null,
       summary: null,
