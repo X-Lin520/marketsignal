@@ -17,6 +17,8 @@ interface DashboardHeaderProps {
   onRefresh: () => void;
   isFetching: boolean;
   onFetchNews: () => void;
+  isResetting: boolean;
+  onReanalyzeAll: () => void;
 }
 
 function useElapsed(lastRefresh: Date) {
@@ -40,6 +42,8 @@ export function DashboardHeader({
   onRefresh,
   isFetching,
   onFetchNews,
+  isResetting,
+  onReanalyzeAll,
 }: DashboardHeaderProps) {
   const { t, language } = useLanguage();
   const elapsed = useElapsed(lastRefresh);
@@ -96,19 +100,34 @@ export function DashboardHeader({
       </div>
 
       {/* Fetch News button */}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onFetchNews}
-        disabled={isFetching}
-        className="h-7 w-full text-xs"
-      >
-        <Download className={`mr-1.5 h-3 w-3 ${isFetching ? "animate-spin" : ""}`} />
-        {isFetching
-          ? (language === "zh" ? "正在抓取最新新闻..." : "Fetching latest news...")
-          : (language === "zh" ? "手动抓取最新新闻" : "Fetch Latest News")
-        }
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onFetchNews}
+          disabled={isFetching || isResetting}
+          className="h-7 flex-1 text-xs"
+        >
+          <Download className={`mr-1.5 h-3 w-3 ${isFetching ? "animate-spin" : ""}`} />
+          {isFetching
+            ? (language === "zh" ? "正在抓取..." : "Fetching...")
+            : (language === "zh" ? "抓取最新新闻" : "Fetch News")
+          }
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onReanalyzeAll}
+          disabled={isResetting || isFetching}
+          className="h-7 flex-1 text-xs"
+        >
+          <RefreshCw className={`mr-1.5 h-3 w-3 ${isResetting ? "animate-spin" : ""}`} />
+          {isResetting
+            ? (language === "zh" ? "正在重分析..." : "Re-analyzing...")
+            : (language === "zh" ? "全部重新分析" : "Re-analyze All")
+          }
+        </Button>
+      </div>
     </div>
   );
 }

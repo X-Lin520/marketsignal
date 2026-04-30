@@ -36,6 +36,7 @@ export function DashboardClient({
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refreshData = useCallback(async () => {
@@ -75,6 +76,25 @@ export function DashboardClient({
     }
   }, [refreshData]);
 
+  const reanalyzeAll = useCallback(async () => {
+    setIsResetting(true);
+    try {
+      const secret = process.env.NEXT_PUBLIC_CRON_SECRET || "dev-secret-change-in-production";
+      const auth = { headers: { Authorization: `Bearer ${secret}` } };
+      const resetRes = await fetch("/api/reset-analysis", { method: "POST", ...auth });
+      if (resetRes.ok) {
+        const { reset } = await resetRes.json();
+        console.log(`Reset ${reset} items for re-analysis`);
+      }
+      await fetch("/api/cron/ingest", { method: "POST", ...auth });
+      await refreshData();
+    } catch (err) {
+      console.error("Re-analyze failed:", err);
+    } finally {
+      setIsResetting(false);
+    }
+  }, [refreshData]);
+
   // Auto-poll every 2 minutes
   useEffect(() => {
     pollRef.current = setInterval(refreshData, POLL_INTERVAL_MS);
@@ -106,6 +126,8 @@ export function DashboardClient({
         onRefresh={refreshData}
         isFetching={isFetching}
         onFetchNews={fetchNews}
+        isResetting={isResetting}
+        onReanalyzeAll={reanalyzeAll}
       />
 
       <NewsFilter sources={sources} />
