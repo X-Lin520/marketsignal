@@ -1,6 +1,7 @@
 "use client";
 
 import { BarChart3 } from "lucide-react";
+import Link from "next/link";
 import { ThemeToggle } from "./ThemeToggle";
 import { LanguageToggle } from "./LanguageToggle";
 import { useLanguage } from "@/providers/language-provider";
@@ -18,6 +19,12 @@ export function Header() {
           </span>
         </div>
         <div className="flex items-center gap-1">
+          <Link
+            className="mr-2 text-xs text-bullish hover:underline"
+            href="/paper"
+          >
+            模拟投资
+          </Link>
           <LanguageToggle />
           <ThemeToggle />
         </div>

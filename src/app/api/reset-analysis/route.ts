@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { requireOperator } from "@/lib/paper/auth";
+import { errorResponse } from "@/lib/paper/http";
 
 export async function POST(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  const secret = process.env.CRON_SECRET;
-
-  if (!secret || token !== secret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    requireOperator(request);
+  } catch (error) {
+    return errorResponse(error);
   }
 
   // Reset ALL items for fresh analysis
@@ -19,6 +19,11 @@ export async function POST(request: Request) {
       sentiment: null,
       impactSectors: [],
       actionableAdvice: null,
+      analysisStatus: "pending",
+      analysisModel: null,
+      promptVersion: null,
+      analysisAttemptedAt: null,
+      analysisError: null,
     },
   });
 

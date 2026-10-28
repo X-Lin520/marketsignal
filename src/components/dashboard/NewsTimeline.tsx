@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { NewsCard } from "./NewsCard";
 import { NewsDetailSheet } from "./NewsDetailSheet";
@@ -21,26 +22,27 @@ export function NewsTimeline({ initialData }: NewsTimelineProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const [currentUrl, setCurrentUrl] = useState("");
+  const query = useSearchParams().toString();
   useEffect(() => {
-    const url = window.location.search;
-    if (url !== currentUrl) {
-      setCurrentUrl(url);
-      setLoading(true);
-      setError(null);
-      fetch(`/api/news${url}${url ? "&" : "?"}page=1&limit=20`)
-        .then((res) => {
-          if (!res.ok) throw new Error("Failed to fetch");
-          return res.json();
-        })
-        .then((data: PaginatedResponse<NewsItemData>) => {
-          setItems(data.items);
-          setPagination(data.pagination);
-        })
-        .catch((err) => setError(err.message))
-        .finally(() => setLoading(false));
-    }
-  }, [currentUrl]);
+    const controller = new AbortController();
+    const params = new URLSearchParams(query);
+    params.set("page", "1");
+    params.set("limit", "20");
+    fetch(`/api/news?${params}`, { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch");
+        return res.json();
+      })
+      .then((data: PaginatedResponse<NewsItemData>) => {
+        setItems(data.items);
+        setPagination(data.pagination);
+        setError(null);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) setError(err.message);
+      });
+    return () => controller.abort();
+  }, [query]);
 
   const loadMore = useCallback(async () => {
     const nextPage = pagination.page + 1;
@@ -77,7 +79,9 @@ export function NewsTimeline({ initialData }: NewsTimelineProps) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <AlertCircle className="mb-3 h-10 w-10 text-destructive" />
-        <p className="text-sm font-medium">{t.dashboard.timeline.failedToLoad}</p>
+        <p className="text-sm font-medium">
+          {t.dashboard.timeline.failedToLoad}
+        </p>
         <p className="mt-1 text-xs text-terminal-text-muted">{error}</p>
         <Button
           variant="outline"

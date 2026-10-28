@@ -1,100 +1,91 @@
 import { prisma } from "@/lib/db/prisma";
-import { analyzeNewsItem } from "./client";
-import { FALLBACK_ANALYSIS } from "./parser";
+import { ANALYSIS_MODEL, analyzeNewsItem } from "./client";
+import { PROMPT_VERSION } from "./prompt";
+import type { NormalizedItem } from "@/lib/rss/types";
 
 const CONCURRENCY = 5;
-const BATCH_DELAY_MS = 500;
-function formatSectors(sectors: string[]): string[] {
-  return sectors;
-}
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isAiEnabled(): boolean {
-  return process.env.ENABLE_AI === "true" &&
+export async function analyzeRecord(record: NormalizedItem & { id: string }) {
+  const enabled =
+    process.env.ENABLE_AI === "true" &&
     !!process.env.OPENAI_API_KEY &&
-    process.env.OPENAI_API_KEY !== "sk-ant-...";
-}
-
-async function analyzeWithFallback(title: string, contentSnippet: string | null, source: string) {
-  if (!isAiEnabled()) {
-    return { ...FALLBACK_ANALYSIS, summary: `[Pending analysis] ${title}` };
-  }
-
-  try {
-    return await analyzeNewsItem({
-      title,
-      link: "",
-      source,
-      publishedAt: new Date(),
-      contentSnippet,
+    !process.env.OPENAI_API_KEY.endsWith("...");
+  const attemptedAt = new Date();
+  if (!enabled) {
+    await prisma.newsItem.update({
+      where: { id: record.id },
+      data: {
+        analysisStatus: "disabled",
+        analysisAttemptedAt: attemptedAt,
+        analysisError: null,
+        analyzedAt: null,
+        summary: null,
+        sentiment: null,
+        impactSectors: [],
+        actionableAdvice: null,
+        analysisModel: null,
+        promptVersion: null,
+      },
     });
-  } catch (err) {
-    console.error(`[AI] Analysis failed for "${title.slice(0, 60)}...":`, err);
-    return FALLBACK_ANALYSIS;
+    return "disabled" as const;
+  }
+  try {
+    // 使用源文章真实发布时间；不把执行分析的时间冒充新闻发布时间。
+    const analysis = await analyzeNewsItem(record);
+    await prisma.newsItem.update({
+      where: { id: record.id },
+      data: {
+        ...analysis,
+        analyzedAt: new Date(),
+        analysisStatus: "success",
+        analysisAttemptedAt: attemptedAt,
+        analysisModel: ANALYSIS_MODEL,
+        promptVersion: PROMPT_VERSION,
+        analysisError: null,
+      },
+    });
+    return "success" as const;
+  } catch {
+    await prisma.newsItem.update({
+      where: { id: record.id },
+      data: {
+        analyzedAt: null,
+        summary: null,
+        sentiment: null,
+        impactSectors: [],
+        actionableAdvice: null,
+        analysisStatus: "failed",
+        analysisAttemptedAt: attemptedAt,
+        analysisError: "分析失败，请稍后重试",
+        analysisModel: ANALYSIS_MODEL,
+        promptVersion: PROMPT_VERSION,
+      },
+    });
+    return "failed" as const;
   }
 }
 
-export async function runAnalysisPipeline(): Promise<{
-  analyzed: number;
-  failed: number;
-  errors: string[];
-}> {
-  const unanalyzed = await prisma.newsItem.findMany({
+export async function runAnalysisPipeline() {
+  const records = await prisma.newsItem.findMany({
     where: { analyzedAt: null },
-    select: { id: true, title: true, contentSnippet: true, source: true },
     orderBy: { publishedAt: "desc" },
+    take: 50,
   });
-
-  if (unanalyzed.length === 0) {
-    return { analyzed: 0, failed: 0, errors: [] };
-  }
-
-  let analyzed = 0;
-  let failed = 0;
+  let analyzed = 0,
+    failed = 0,
+    disabled = 0;
   const errors: string[] = [];
-
-  for (let i = 0; i < unanalyzed.length; i += CONCURRENCY) {
-    const batch = unanalyzed.slice(i, i + CONCURRENCY);
-
+  for (let i = 0; i < records.length; i += CONCURRENCY) {
     const results = await Promise.allSettled(
-      batch.map(async (record) => {
-        const analysis = await analyzeWithFallback(
-          record.title,
-          record.contentSnippet,
-          record.source,
-        );
-        await prisma.newsItem.update({
-          where: { id: record.id },
-          data: {
-            summary: analysis.summary,
-            sentiment: analysis.sentiment,
-            impactSectors: formatSectors(analysis.impactSectors),
-            actionableAdvice: analysis.actionableAdvice,
-            analyzedAt: new Date(),
-          },
-        });
-      }),
+      records.slice(i, i + CONCURRENCY).map(analyzeRecord),
     );
-
     for (const result of results) {
-      if (result.status === "fulfilled") analyzed++;
-      else {
+      if (result.status === "rejected" || result.value === "failed") {
         failed++;
-        errors.push(
-          result.reason instanceof Error
-            ? result.reason.message
-            : String(result.reason),
-        );
-      }
-    }
-
-    if (i + CONCURRENCY < unanalyzed.length) {
-      await sleep(BATCH_DELAY_MS);
+        errors.push("部分新闻分析失败，已保留失败状态");
+      } else if (result.value === "disabled") disabled++;
+      else analyzed++;
     }
   }
-
-  return { analyzed, failed, errors };
+  return { analyzed, failed, disabled, errors: [...new Set(errors)] };
 }

@@ -37,6 +37,7 @@ export function DashboardClient({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [actionError, setActionError] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refreshData = useCallback(async () => {
@@ -57,43 +58,38 @@ export function DashboardClient({
 
   const fetchNews = useCallback(async () => {
     setIsFetching(true);
+    setActionError("");
     try {
-      const secret = process.env.NEXT_PUBLIC_CRON_SECRET || "dev-secret-change-in-production";
       const res = await fetch("/api/cron/ingest", {
         method: "POST",
-        headers: { Authorization: `Bearer ${secret}` },
       });
-      if (res.ok) {
-        const result = await res.json();
-        console.log("Ingest result:", result);
-        // Refresh stats after ingest
-        await refreshData();
-      }
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? "新闻抓取失败");
+      window.location.reload();
     } catch (err) {
-      console.error("Fetch news failed:", err);
+      setActionError(err instanceof Error ? err.message : "抓取失败，请重试");
     } finally {
       setIsFetching(false);
     }
-  }, [refreshData]);
+  }, []);
 
   const reanalyzeAll = useCallback(async () => {
     setIsResetting(true);
+    setActionError("");
     try {
-      const secret = process.env.NEXT_PUBLIC_CRON_SECRET || "dev-secret-change-in-production";
-      const auth = { headers: { Authorization: `Bearer ${secret}` } };
-      const resetRes = await fetch("/api/reset-analysis", { method: "POST", ...auth });
-      if (resetRes.ok) {
-        const { reset } = await resetRes.json();
-        console.log(`Reset ${reset} items for re-analysis`);
-      }
-      await fetch("/api/cron/ingest", { method: "POST", ...auth });
-      await refreshData();
+      const resetRes = await fetch("/api/reset-analysis", { method: "POST" });
+      const reset = await resetRes.json();
+      if (!resetRes.ok) throw new Error(reset.error ?? "重置失败");
+      const ingestRes = await fetch("/api/cron/ingest", { method: "POST" });
+      if (!ingestRes.ok)
+        throw new Error("已重置，分析未完成，请稍后重新触发抓取");
+      window.location.reload();
     } catch (err) {
-      console.error("Re-analyze failed:", err);
+      setActionError(err instanceof Error ? err.message : "重新分析失败");
     } finally {
       setIsResetting(false);
     }
-  }, [refreshData]);
+  }, []);
 
   // Auto-poll every 2 minutes
   useEffect(() => {
@@ -129,6 +125,15 @@ export function DashboardClient({
         isResetting={isResetting}
         onReanalyzeAll={reanalyzeAll}
       />
+
+      {actionError && (
+        <p role="alert" className="text-sm text-red-400">
+          {actionError}{" "}
+          <a className="underline" href="/paper">
+            进入实验区登录
+          </a>
+        </p>
+      )}
 
       <NewsFilter sources={sources} />
 

@@ -1,5 +1,5 @@
 import Parser from "rss-parser";
-import type { RawFeedItem, FetchResult, NormalizedItem } from "./types";
+import type { RawFeedItem, FetchResult } from "./types";
 import { RSS_SOURCES } from "./sources";
 import { normalizeItems } from "./parser";
 
@@ -14,7 +14,11 @@ async function fetchSingleSource(
     const feed = await parser.parseURL(source.url);
 
     if (!feed?.items?.length) {
-      return { sourceName: source.name, items: [], error: "Feed returned no items" };
+      return {
+        sourceName: source.name,
+        items: [],
+        error: "Feed returned no items",
+      };
     }
 
     const normalized = normalizeItems(feed.items, source.name);

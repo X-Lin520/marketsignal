@@ -4,6 +4,7 @@ import { parseAiResponse } from "./parser";
 import type { NormalizedItem } from "@/lib/rss/types";
 
 let openai: OpenAI | null = null;
+export const ANALYSIS_MODEL = "gpt-4.1-mini";
 
 function getClient(): OpenAI {
   if (!openai) {
@@ -29,7 +30,7 @@ export async function analyzeNewsItem(
   const client = getClient();
 
   const response = await client.chat.completions.create({
-    model: "gpt-4.1-mini",
+    model: ANALYSIS_MODEL,
     max_tokens: 600,
     temperature: 0.1,
     messages: [

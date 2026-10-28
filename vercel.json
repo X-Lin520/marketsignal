@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/ingest",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/paper",
+      "schedule": "30 8 * * *"
     }
   ]
 }

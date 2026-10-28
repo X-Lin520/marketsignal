@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
-import { Geist, Geist_Mono } from "next/font/google";
+import { cookies, headers } from "next/headers";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { LanguageProvider } from "@/providers/language-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -8,16 +9,6 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import type { Language } from "@/lib/i18n/translations";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "MarketSignal — AI-Powered Market Intelligence",
@@ -33,12 +24,16 @@ export default async function RootLayout({
   const cookieStore = await cookies();
   const langCookie = cookieStore.get("marketsignal-language")?.value;
   const initialLanguage: Language =
-    langCookie === "zh" || langCookie === "en" ? langCookie : "en";
+    langCookie === "zh" || langCookie === "en"
+      ? langCookie
+      : (await headers()).get("accept-language")?.toLowerCase().startsWith("zh")
+        ? "zh"
+        : "en";
 
   return (
     <html
       lang={initialLanguage === "zh" ? "zh-CN" : "en"}
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>

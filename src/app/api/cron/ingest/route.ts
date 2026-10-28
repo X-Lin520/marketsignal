@@ -5,17 +5,30 @@ import { deduplicate } from "@/lib/rss/deduplicator";
 import { runAnalysisPipeline } from "@/lib/ai/pipeline";
 import { prisma } from "@/lib/db/prisma";
 import type { IngestSummary } from "@/types";
+import { requireCron, requireOperator } from "@/lib/paper/auth";
+import { errorResponse } from "@/lib/paper/http";
+
+export const maxDuration = 60;
+
+export async function GET(request: Request) {
+  try {
+    requireCron(request);
+  } catch (error) {
+    return errorResponse(error);
+  }
+  return ingest();
+}
 
 export async function POST(request: Request) {
-  // Auth check
-  const authHeader = request.headers.get("authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  const secret = process.env.CRON_SECRET;
-
-  if (!secret || token !== secret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    requireOperator(request);
+  } catch (error) {
+    return errorResponse(error);
   }
+  return ingest();
+}
 
+async function ingest() {
   const errors: string[] = [];
 
   try {
@@ -36,6 +49,7 @@ export async function POST(request: Request) {
     // Step 4: Insert new items (unanalyzed)
     if (newItems.length > 0) {
       await prisma.newsItem.createMany({
+        skipDuplicates: true,
         data: newItems.map((item) => ({
           title: item.title,
           link: item.link,
@@ -59,8 +73,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json(summary);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Ingest pipeline failed";
-    console.error("[Cron] Ingest error:", message);
+    const message = "新闻采集失败，请稍后重试";
+    console.error(
+      "[Cron] Ingest error:",
+      err instanceof Error ? err.name : "UnknownError",
+    );
     return NextResponse.json(
       { fetched: 0, new: 0, analyzed: 0, errors: [message] },
       { status: 500 },

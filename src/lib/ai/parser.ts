@@ -28,9 +28,18 @@ function closeTruncatedJson(json: string): string {
   let inString = false;
   let escaped = false;
   for (const ch of json) {
-    if (escaped) { escaped = false; continue; }
-    if (ch === "\\") { escaped = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
     if (inString) continue;
     if (ch === "{") openBraces++;
     if (ch === "}") openBraces--;
@@ -44,10 +53,14 @@ function closeTruncatedJson(json: string): string {
 /** Quick regex extraction of known fields when JSON is broken */
 function extractFieldsManually(raw: string): AiAnalysis | null {
   try {
-    const sentimentMatch = raw.match(/"sentiment"\s*:\s*"(Bullish|Bearish|Neutral)"/i);
+    const sentimentMatch = raw.match(
+      /"sentiment"\s*:\s*"(Bullish|Bearish|Neutral)"/i,
+    );
     const summaryMatch = raw.match(/"summary"\s*:\s*"([\s\S]*?)(?:"\s*[,}]|$)/);
     const sectorsMatch = raw.match(/"impactSectors"\s*:\s*\[([^\]]*)\]/);
-    const adviceMatch = raw.match(/"actionableAdvice"\s*:\s*(null|"([\s\S]*?)(?:"\s*[,}]|$))/);
+    const adviceMatch = raw.match(
+      /"actionableAdvice"\s*:\s*(null|"([\s\S]*?)(?:"\s*[,}]|$))/,
+    );
 
     if (!sentimentMatch) return null;
 
@@ -107,6 +120,5 @@ export function parseAiResponse(raw: string): AiAnalysis {
     }
   }
 
-  console.error("[AI] All parse attempts failed. Raw:", raw.slice(0, 300));
-  return FALLBACK_ANALYSIS;
+  throw new Error("AI_RESPONSE_INVALID");
 }

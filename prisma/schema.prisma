@@ -1,5 +1,5 @@
-// PostgreSQL schema for production (Supabase / Vercel Postgres)
-// Usage: copy this over schema.prisma before deploying
+// 唯一的运行时 PostgreSQL schema；兼容文件 schema-postgresql.prisma 保持相同内容。
+// 升级既有数据库前，先按 docs/PAPER_EXPERIMENT.md 核对基线。
 
 generator client {
   provider = "prisma-client-js"
@@ -18,26 +18,158 @@ enum Sentiment {
 }
 
 model NewsItem {
-  id               String     @id @default(cuid())
-  title            String
-  link             String     @unique
-  source           String
-  publishedAt      DateTime
-  contentSnippet   String?    @db.Text
+  id             String   @id @default(cuid())
+  title          String
+  link           String   @unique
+  source         String
+  publishedAt    DateTime
+  contentSnippet String?  @db.Text
 
   // AI Analysis fields
-  summary          String?    @db.Text
-  sentiment        Sentiment?
-  impactSectors    String[]   @default([])
-  actionableAdvice String?    @db.Text
-  analyzedAt       DateTime?
+  summary             String?    @db.Text
+  sentiment           Sentiment?
+  impactSectors       String[]   @default([])
+  actionableAdvice    String?    @db.Text
+  analyzedAt          DateTime?
+  analysisStatus      String     @default("pending")
+  analysisModel       String?
+  promptVersion       String?
+  analysisAttemptedAt DateTime?
+  analysisError       String?
 
   // Pipeline metadata
-  ingestedAt       DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  ingestedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([publishedAt])
   @@index([sentiment])
   @@index([source])
   @@index([analyzedAt])
+}
+
+model PaperAccount {
+  id             String            @id @default("primary")
+  initialCash    Decimal           @db.Decimal(20, 2)
+  startDate      String
+  settledThrough String
+  feeBps         Int
+  minimumFee     Decimal           @db.Decimal(20, 2)
+  createdAt      DateTime          @default(now())
+  instruments    PaperInstrument[]
+  decisions      PaperDecision[]
+  trades         PaperTrade[]
+  adjustments    PaperAdjustment[]
+  snapshots      PaperSnapshot[]
+}
+
+model PaperInstrument {
+  symbol    String       @id
+  name      String
+  accountId String
+  account   PaperAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+}
+
+model PaperCalendarDay {
+  date       String   @id
+  isOpen     Boolean
+  source     String
+  importedAt DateTime @default(now())
+}
+
+model PaperPrice {
+  id         String   @id @default(cuid())
+  symbol     String
+  tradeDate  String
+  revision   Int
+  close      Decimal  @db.Decimal(18, 4)
+  status     String
+  source     String
+  importedAt DateTime @default(now())
+
+  @@unique([symbol, tradeDate, revision])
+  @@index([tradeDate])
+}
+
+model PaperDecision {
+  id           String       @id @default(cuid())
+  accountId    String
+  decisionDate String
+  submittedAt  DateTime
+  kind         String
+  rationale    String       @db.Text
+  evidence     Json
+  context      Json
+  inputDigest  String
+  account      PaperAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  orders       PaperOrder[]
+
+  @@unique([accountId, decisionDate])
+}
+
+model PaperOrder {
+  id              String        @id @default(cuid())
+  decisionId      String
+  symbol          String
+  side            String
+  quantity        Int
+  status          String        @default("PENDING")
+  executionDate   String?
+  rejectionReason String?
+  decision        PaperDecision @relation(fields: [decisionId], references: [id], onDelete: Restrict)
+  trade           PaperTrade?
+
+  @@unique([decisionId, symbol])
+}
+
+model PaperTrade {
+  id        String       @id @default(cuid())
+  accountId String
+  orderId   String       @unique
+  tradeDate String
+  symbol    String
+  side      String
+  quantity  Int
+  price     Decimal      @db.Decimal(18, 4)
+  gross     Decimal      @db.Decimal(20, 2)
+  fee       Decimal      @db.Decimal(20, 2)
+  createdAt DateTime     @default(now())
+  account   PaperAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  order     PaperOrder   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([accountId, tradeDate])
+}
+
+model PaperAdjustment {
+  id         String       @id @default(cuid())
+  requestId  String       @unique
+  accountId  String
+  eventDate  String
+  symbol     String
+  kind       String
+  cashAmount Decimal      @db.Decimal(20, 2)
+  shareDelta Int
+  source     String
+  reason     String       @db.Text
+  createdAt  DateTime     @default(now())
+  account    PaperAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([accountId, eventDate])
+}
+
+model PaperSnapshot {
+  id              String       @id @default(cuid())
+  accountId       String
+  tradeDate       String
+  revision        Int
+  cash            Decimal      @db.Decimal(20, 2)
+  marketValue     Decimal      @db.Decimal(20, 2)
+  equity          Decimal      @db.Decimal(20, 2)
+  holdings        Json
+  benchmarkClose  Decimal      @db.Decimal(18, 4)
+  missingDecision Boolean
+  inputDigest     String
+  createdAt       DateTime     @default(now())
+  account         PaperAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, tradeDate, revision])
 }
