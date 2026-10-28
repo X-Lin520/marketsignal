@@ -7,8 +7,17 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/paper/domain.test.ts",
+    "test:integration": "tsx scripts/test-integration.ts",
+    "test:http": "tsx scripts/test-integration.ts --http",
+    "paper:credentials": "tsx scripts/paper-credentials.ts",
+    "preview:paper": "tsx scripts/preview-paper.ts",
+    "prepreview:paper": "prisma generate && next build",
+    "db:migrate": "prisma migrate deploy",
+    "reanalyze:all": "tsx scripts/reanalyze-all.ts",
     "db:seed": "npx tsx prisma/seed.ts",
-    "vercel-build": "npx prisma db push && npx prisma generate && next build"
+    "vercel-build": "prisma generate && next build"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
@@ -21,6 +30,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dotenv": "^17.4.2",
+    "geist": "1.8.2",
     "lucide-react": "^1.14.0",
     "next": "16.2.4",
     "next-themes": "^0.4.6",
@@ -38,6 +48,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "embedded-postgres": "18.4.0-beta.17",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "prettier": "^3.8.3",

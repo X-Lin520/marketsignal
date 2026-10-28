@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/test-results/
+/.paper-dev/
 
 # next.js
 /.next/
