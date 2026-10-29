@@ -4,7 +4,7 @@ import { analyzeNewsItem } from "@/lib/ai/client";
 import { parseSectors } from "@/lib/utils/helpers";
 import { authorized } from "@/lib/auth";
 import { safeAiError } from "@/lib/ai/errors";
-
+import { AnalysisDiagnosticError, logAiDiagnostic } from "@/lib/ai/diagnostics";
 
 export async function POST(request: Request) {
   if (!authorized(request, process.env.ADMIN_SECRET)) {
@@ -15,36 +15,58 @@ export async function POST(request: Request) {
     const { newsId } = await request.json();
 
     if (!newsId || typeof newsId !== "string") {
-      return NextResponse.json({ error: "newsId is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "newsId is required" },
+        { status: 400 },
+      );
     }
 
     const item = await prisma.newsItem.findUnique({ where: { id: newsId } });
 
     if (!item) {
-      return NextResponse.json({ error: "News item not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "News item not found" },
+        { status: 404 },
+      );
     }
 
-    if (process.env.ENABLE_AI !== "true" || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === "sk-ant-...") {
-      return NextResponse.json({ error: "AI analysis is disabled or not configured" }, { status: 503 });
+    if (
+      process.env.ENABLE_AI !== "true" ||
+      !process.env.OPENAI_API_KEY ||
+      process.env.OPENAI_API_KEY === "sk-ant-..."
+    ) {
+      return NextResponse.json(
+        { error: "AI analysis is disabled or not configured" },
+        { status: 503 },
+      );
     }
-    const analysis = await analyzeNewsItem({
+    const analysis = await analyzeNewsItem(
+      {
         title: item.title,
         link: item.link,
         source: item.source,
         publishedAt: item.publishedAt,
         contentSnippet: item.contentSnippet,
-      });
-
-    const updated = await prisma.newsItem.update({
-      where: { id: newsId },
-      data: {
-        summary: analysis.summary,
-        sentiment: analysis.sentiment,
-        impactSectors: analysis.impactSectors,
-        actionableAdvice: analysis.actionableAdvice,
-        analyzedAt: new Date(),
       },
-    });
+      { operation: "analyze", newsId },
+    );
+
+    const updated = await prisma.newsItem
+      .update({
+        where: { id: newsId },
+        data: {
+          summary: analysis.summary,
+          sentiment: analysis.sentiment,
+          impactSectors: analysis.impactSectors,
+          actionableAdvice: analysis.actionableAdvice,
+          analyzedAt: new Date(),
+        },
+      })
+      .catch(() => {
+        const diagnostic = { code: "SAVE_FAILED" as const };
+        logAiDiagnostic(diagnostic, { operation: "analyze", newsId });
+        throw new AnalysisDiagnosticError(diagnostic);
+      });
 
     return NextResponse.json({
       item: {

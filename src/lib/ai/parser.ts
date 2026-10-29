@@ -1,5 +1,9 @@
 import { z } from "zod";
 import type { AiAnalysis } from "./client";
+import {
+  AnalysisDiagnosticError,
+  type AnalysisDiagnostic,
+} from "./diagnostics";
 
 const aiAnalysisSchema = z.object({
   summary: z.string().min(10).max(500),
@@ -28,9 +32,18 @@ function closeTruncatedJson(json: string): string {
   let inString = false;
   let escaped = false;
   for (const ch of json) {
-    if (escaped) { escaped = false; continue; }
-    if (ch === "\\") { escaped = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
     if (inString) continue;
     if (ch === "{") openBraces++;
     if (ch === "}") openBraces--;
@@ -44,10 +57,14 @@ function closeTruncatedJson(json: string): string {
 /** Quick regex extraction of known fields when JSON is broken */
 function extractFieldsManually(raw: string): AiAnalysis | null {
   try {
-    const sentimentMatch = raw.match(/"sentiment"\s*:\s*"(Bullish|Bearish|Neutral)"/i);
+    const sentimentMatch = raw.match(
+      /"sentiment"\s*:\s*"(Bullish|Bearish|Neutral)"/i,
+    );
     const summaryMatch = raw.match(/"summary"\s*:\s*"([\s\S]*?)(?:"\s*[,}]|$)/);
     const sectorsMatch = raw.match(/"impactSectors"\s*:\s*\[([^\]]*)\]/);
-    const adviceMatch = raw.match(/"actionableAdvice"\s*:\s*(null|"([\s\S]*?)(?:"\s*[,}]|$))/);
+    const adviceMatch = raw.match(
+      /"actionableAdvice"\s*:\s*(null|"([\s\S]*?)(?:"\s*[,}]|$))/,
+    );
 
     if (!sentimentMatch) return null;
 
@@ -80,19 +97,45 @@ function extractFieldsManually(raw: string): AiAnalysis | null {
 }
 
 export function parseAiResponse(raw: string): AiAnalysis {
+  let validationFailure: AnalysisDiagnostic | undefined;
+  function validate(candidate: unknown): AiAnalysis {
+    const result = aiAnalysisSchema.safeParse(candidate);
+    if (result.success) return result.data;
+    // 保留首次真实字段错误，避免后续恢复尝试把它淹没为笼统的 JSON 错误。
+    validationFailure ??= {
+      code: "OUTPUT_SCHEMA_INVALID",
+      contentLength: raw.length,
+      summaryLength:
+        typeof candidate === "object" &&
+        candidate !== null &&
+        "summary" in candidate &&
+        typeof candidate.summary === "string"
+          ? candidate.summary.length
+          : undefined,
+      issues: result.error.issues.map((issue) => ({
+        field: typeof issue.path[0] === "string" ? issue.path[0] : "other",
+        code: issue.code,
+        limit:
+          "maximum" in issue && typeof issue.maximum === "number"
+            ? issue.maximum
+            : "minimum" in issue && typeof issue.minimum === "number"
+              ? issue.minimum
+              : undefined,
+      })),
+    };
+    throw new AnalysisDiagnosticError(validationFailure);
+  }
   // Attempt 1: clean JSON parse
   try {
     const jsonStr = stripMarkdownFences(raw);
     const parsed = JSON.parse(jsonStr);
-    const validated = aiAnalysisSchema.parse(parsed);
-    return validated;
+    return validate(parsed);
   } catch {
     // Attempt 2: try closing truncated JSON
     try {
       const jsonStr = closeTruncatedJson(stripMarkdownFences(raw));
       const parsed = JSON.parse(jsonStr);
-      const validated = aiAnalysisSchema.parse(parsed);
-      return validated;
+      return validate(parsed);
     } catch {
       // Attempt 3: regex field extraction from broken JSON
       const extracted = extractFieldsManually(raw);
@@ -100,13 +143,16 @@ export function parseAiResponse(raw: string): AiAnalysis {
         // Validate through zod
         const result = aiAnalysisSchema.safeParse(extracted);
         if (result.success) {
-          console.warn("[AI] Recovered via regex extraction");
           return result.data;
         }
       }
     }
   }
 
-  console.error("[AI] All parse attempts failed. Raw:", raw.slice(0, 300));
-  throw new Error("AI response could not be parsed");
+  throw new AnalysisDiagnosticError(
+    validationFailure ?? {
+      code: "OUTPUT_INVALID_JSON",
+      contentLength: raw.length,
+    },
+  );
 }

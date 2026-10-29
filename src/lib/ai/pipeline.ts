@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { analyzeNewsItem } from "./client";
 import { safeAiError } from "./errors";
+import { AnalysisDiagnosticError, logAiDiagnostic } from "./diagnostics";
 
 const CONCURRENCY = 5;
 const BATCH_DELAY_MS = 500;
@@ -15,9 +16,11 @@ function sleep(ms: number): Promise<void> {
 }
 
 function isAiEnabled(): boolean {
-  return process.env.ENABLE_AI === "true" &&
+  return (
+    process.env.ENABLE_AI === "true" &&
     !!process.env.OPENAI_API_KEY &&
-    process.env.OPENAI_API_KEY !== "sk-ant-...";
+    process.env.OPENAI_API_KEY !== "sk-ant-..."
+  );
 }
 
 export async function runAnalysisPipeline(): Promise<{
@@ -26,11 +29,24 @@ export async function runAnalysisPipeline(): Promise<{
   errors: string[];
 }> {
   if (!isAiEnabled()) {
-    return { analyzed: 0, failed: 0, errors: ["AI analysis is disabled or not configured; items remain pending."] };
+    return {
+      analyzed: 0,
+      failed: 0,
+      errors: [
+        "AI analysis is disabled or not configured; items remain pending.",
+      ],
+    };
   }
   const unanalyzed = await prisma.newsItem.findMany({
     where: { analyzedAt: null },
-    select: { id: true, title: true, link: true, publishedAt: true, contentSnippet: true, source: true },
+    select: {
+      id: true,
+      title: true,
+      link: true,
+      publishedAt: true,
+      contentSnippet: true,
+      source: true,
+    },
     orderBy: { publishedAt: "desc" },
     take: MAX_ITEMS_PER_RUN,
   });
@@ -48,17 +64,24 @@ export async function runAnalysisPipeline(): Promise<{
 
     const results = await Promise.allSettled(
       batch.map(async (record) => {
-        const analysis = await analyzeNewsItem(record);
-        await prisma.newsItem.update({
-          where: { id: record.id },
-          data: {
-            summary: analysis.summary,
-            sentiment: analysis.sentiment,
-            impactSectors: formatSectors(analysis.impactSectors),
-            actionableAdvice: analysis.actionableAdvice,
-            analyzedAt: new Date(),
-          },
-        });
+        const context = { operation: "ingest" as const, newsId: record.id };
+        const analysis = await analyzeNewsItem(record, context);
+        try {
+          await prisma.newsItem.update({
+            where: { id: record.id },
+            data: {
+              summary: analysis.summary,
+              sentiment: analysis.sentiment,
+              impactSectors: formatSectors(analysis.impactSectors),
+              actionableAdvice: analysis.actionableAdvice,
+              analyzedAt: new Date(),
+            },
+          });
+        } catch {
+          const diagnostic = { code: "SAVE_FAILED" as const };
+          logAiDiagnostic(diagnostic, context);
+          throw new AnalysisDiagnosticError(diagnostic);
+        }
       }),
     );
 
