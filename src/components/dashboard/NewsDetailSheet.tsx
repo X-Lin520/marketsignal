@@ -25,11 +25,13 @@ import {
   FileText,
 } from "lucide-react";
 import type { NewsItemData } from "@/types";
+import { SingleNewsAnalysis } from "./SingleNewsAnalysis";
 
 interface NewsDetailSheetProps {
   item: NewsItemData | null;
   isOpen: boolean;
   onClose: () => void;
+  onAnalyzed: (item: NewsItemData) => void;
 }
 
 const sentimentIcons = {
@@ -49,6 +51,7 @@ export function NewsDetailSheet({
   item,
   isOpen,
   onClose,
+  onAnalyzed,
 }: NewsDetailSheetProps) {
   const { t, language } = useLanguage();
 
@@ -101,6 +104,11 @@ export function NewsDetailSheet({
         {/* Body */}
         <ScrollArea className="max-h-[calc(85vh-120px)]">
           <div className="space-y-4 px-6 py-5">
+            <SingleNewsAnalysis
+              key={item.id}
+              newsId={item.id}
+              onAnalyzed={onAnalyzed}
+            />
             {/* Sentiment Banner */}
             {item.sentiment ? (
               <div
