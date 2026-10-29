@@ -7,8 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test tests/*.test.cjs",
     "db:seed": "npx tsx prisma/seed.ts",
-    "vercel-build": "npx prisma db push && npx prisma generate && next build"
+    "vercel-build": "npx prisma generate && next build"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

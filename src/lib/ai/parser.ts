@@ -108,5 +108,5 @@ export function parseAiResponse(raw: string): AiAnalysis {
   }
 
   console.error("[AI] All parse attempts failed. Raw:", raw.slice(0, 300));
-  return FALLBACK_ANALYSIS;
+  throw new Error("AI response could not be parsed");
 }

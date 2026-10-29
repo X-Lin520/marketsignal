@@ -15,5 +15,9 @@ export async function deduplicate(
 
   const existingLinks = new Set(existing.map((e) => e.link));
 
-  return items.filter((item) => !existingLinks.has(item.link));
+  return items.filter((item) => {
+    if (existingLinks.has(item.link)) return false;
+    existingLinks.add(item.link);
+    return true;
+  });
 }

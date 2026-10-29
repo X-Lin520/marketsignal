@@ -1,16 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { analyzeNewsItem } from "@/lib/ai/client";
-import { FALLBACK_ANALYSIS } from "@/lib/ai/parser";
 import { parseSectors } from "@/lib/utils/helpers";
+import { authorized } from "@/lib/auth";
 
 
 export async function POST(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  const secret = process.env.CRON_SECRET;
-
-  if (!secret || token !== secret) {
+  if (!authorized(request, process.env.ADMIN_SECRET)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -27,18 +23,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "News item not found" }, { status: 404 });
     }
 
-    let analysis;
     if (process.env.ENABLE_AI !== "true" || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === "sk-ant-...") {
-      analysis = FALLBACK_ANALYSIS;
-    } else {
-      analysis = await analyzeNewsItem({
+      return NextResponse.json({ error: "AI analysis is disabled or not configured" }, { status: 503 });
+    }
+    const analysis = await analyzeNewsItem({
         title: item.title,
         link: item.link,
         source: item.source,
         publishedAt: item.publishedAt,
         contentSnippet: item.contentSnippet,
       });
-    }
 
     const updated = await prisma.newsItem.update({
       where: { id: newsId },

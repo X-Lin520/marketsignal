@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { PAGE_SIZE } from "@/lib/utils/constants";
 import { parseSectors } from "@/lib/utils/helpers";
 import type { PaginatedResponse, NewsItemData } from "@/types";
+import { isLegacyPlaceholder, validAnalysisFilter } from "@/lib/ai/legacy";
 
 function deserializeItem(item: {
   id: string;
@@ -18,20 +19,33 @@ function deserializeItem(item: {
   analyzedAt: Date | null;
   ingestedAt: Date;
 }): NewsItemData {
+  const placeholder = isLegacyPlaceholder(item.summary);
   return {
     ...item,
     publishedAt: item.publishedAt.toISOString(),
     ingestedAt: item.ingestedAt.toISOString(),
-    analyzedAt: item.analyzedAt?.toISOString() ?? null,
-    sentiment: item.sentiment as NewsItemData["sentiment"],
-    impactSectors: parseSectors(item.impactSectors),
+    analyzedAt: placeholder ? null : item.analyzedAt?.toISOString() ?? null,
+    summary: placeholder ? null : item.summary,
+    actionableAdvice: placeholder ? null : item.actionableAdvice,
+    sentiment: placeholder ? null : item.sentiment as NewsItemData["sentiment"],
+    impactSectors: placeholder ? [] : parseSectors(item.impactSectors),
   };
 }
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
-  const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? String(PAGE_SIZE), 10)));
+  const pageText = searchParams.get("page") ?? "1";
+  const limitText = searchParams.get("limit") ?? String(PAGE_SIZE);
+  if (!/^\d+$/.test(pageText) || !/^\d+$/.test(limitText)) {
+    return NextResponse.json({ error: "page and limit must be positive integers" }, { status: 400 });
+  }
+  const pageValue = Number(pageText);
+  const limitValue = Number(limitText);
+  if (!Number.isSafeInteger(pageValue) || pageValue < 1 || !Number.isSafeInteger(limitValue) || limitValue < 1) {
+    return NextResponse.json({ error: "page and limit must be positive integers" }, { status: 400 });
+  }
+  const page = pageValue;
+  const limit = Math.min(50, limitValue);
   const sentiment = searchParams.get("sentiment");
   const source = searchParams.get("source");
   const sector = searchParams.get("sector");
@@ -42,6 +56,7 @@ export async function GET(request: NextRequest) {
   const where: Record<string, any> = {};
   if (sentiment && ["Bullish", "Bearish", "Neutral"].includes(sentiment)) {
     where.sentiment = sentiment;
+    Object.assign(where, validAnalysisFilter);
   }
   if (source) {
     where.source = source;

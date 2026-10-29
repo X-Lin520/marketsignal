@@ -1,291 +1,36 @@
-# MarketSignal — AI 驱动的股市情报监控仪表盘
+# MarketSignal
 
-## 项目简介
+财经新闻监控仪表盘：从 RSS 采集新闻，以 OpenAI 分析摘要、情绪和受影响板块，并提供筛选与原文链接。AI 输出仅供参考，不构成投资建议。
 
-MarketSignal 是一个 24 小时自动化财经新闻监控与分析平台。它定期抓取全球权威财经媒体的 RSS 新闻源，利用 Claude 大语言模型对每条新闻进行智能分析，生成市场情绪判断、行业影响评估和可操作的投资建议，并通过 Bloomberg 终端风格的暗黑模式仪表盘集中展示。
+## 现状和前提
 
-### 解决的核心问题
+- Next.js 16、React 19、Prisma 6 和 **PostgreSQL**；当前 schema 不支持 SQLite。
+- AI 使用 OpenAI `gpt-4.1-mini`。关闭或失败的分析保持待处理，不计作中性。
+- `vercel.json` 当前配置为 **每天 UTC 00:00**，并非每 5 分钟。实际频率需结合 Vercel 套餐限制和 API 成本确定。
+- 每次采集最多自动分析 10 条待处理新闻，剩余条目保留到后续任务；手动重分析仍需单独操作并可能产生额外费用。
+- 仓库保留的旧迁移是 SQLite 格式，与当前 PostgreSQL schema 不一致。生产库应先备份，核对现有 schema 和迁移历史，制定并演练 PostgreSQL 基线迁移及回滚；不要直接对生产库执行 `db push` 或旧迁移。
 
-- **信息过载**：每天数千条财经新闻，人工无法逐一阅读
-- **噪音干扰**：广告、软文、非财经内容充斥 RSS 源
-- **分析滞后**：依赖人工解读，错过短线交易窗口
+## 本地运行
 
-### 核心能力
+1. 准备 Node.js 20.9 或以上版本和独立的 PostgreSQL 测试数据库。
+2. 安装依赖：`npm ci`。
+3. 从 `.env.example` 复制到 `.env.local`，设置 `DATABASE_URL`、`DIRECT_URL`。如需 AI，设置 `OPENAI_API_KEY` 和 `ENABLE_AI=true`；否则设置 `ENABLE_AI=false`。生成独立随机的 `CRON_SECRET` 和 `ADMIN_SECRET`，不要添加到代码或提交到 Git。
+4. **仅对新的、可丢弃的本地测试库**：运行 `npx prisma db push`、`npx prisma generate`；可选运行 `npm run db:seed` 加入模拟新闻。示例内容和链接并非实时新闻。
+5. 运行 `npm run dev`，打开 `http://localhost:3000`。
 
-| 能力 | 说明 |
-|------|------|
-| RSS 自动抓取 | 每 5 分钟从 CNBC、MarketWatch 等源拉取最新资讯 |
-| 智能去噪 | 自动过滤广告、观点文、过时新闻 |
-| AI 情绪分析 | Claude 模型判断每条新闻的 Bullish / Bearish / Neutral |
-| 行业识别 | 自动标注受影响的行业板块（Technology、Energy 等） |
-| 交易建议 | 生成具体、可操作的短线投资策略 |
-| 暗黑仪表盘 | Bloomberg 终端风格 UI，支持中英文切换 |
+## 操作与保护
 
----
+- 统计和新闻列表是只读接口。筛选更改时会刷新列表，失败会显示错误提示。
+- Vercel Cron 对 `/api/cron/ingest` 发起 GET，并使用 `CRON_SECRET`；手动抓取使用 POST 和 `ADMIN_SECRET`。
+- 手动抓取及重新分析在页面中输入管理员密钥，密钥仅保存在当前操作的内存中，不放入 `NEXT_PUBLIC_` 变量或浏览器持久存储。请只在可信设备和 HTTPS 环境使用。
+- 全部重新分析按批执行。每条只有分析成功后才替换原结果，失败保留原结果；会产生模型调用费用，操作前应评估数量和预算。关闭页面或网络中断后，未处理部分不会自动继续。
+- 旧的 `/api/reset-analysis` 已停用。上线前仍应配置独立的访问控制、请求频率限制和监控；共享密钥不是完整的多用户登录系统。
+- 旧版本写入的占位“中性”结果不会自动修复。生产数据需先备份、识别占位记录，再决定是否重分析。
 
-## 技术栈
+## 检查与部署
 
-| 层级 | 技术 |
-|------|------|
-| 框架 | Next.js 16 (App Router) + TypeScript + React 19 |
-| 样式 | Tailwind CSS v4 + shadcn/ui (Base UI) |
-| 数据库 | SQLite（本地开发）/ Supabase PostgreSQL（生产） |
-| ORM | Prisma 6 |
-| AI | Anthropic Claude API (claude-sonnet-4-6) |
-| 定时任务 | Vercel Cron Jobs（生产）/ 手动触发（开发） |
+执行 `npx tsc --noEmit`、`npm run lint` 和 `npm run build`，并使用独立数据库验证采集、分析、筛选、错误处理和分页。部署前确认环境变量、数据库备份和恢复流程、管理员密钥以及定时任务是否符合套餐限制。部署后查看运行日志，并核对实际最新采集时间；构建成功不能证明数据链路正常。
 
----
+生产构建脚本只生成 Prisma Client 并构建应用，不会自动修改数据库 schema。部署前仍须完成数据库迁移方案与验证。
 
-## 快速开始
-
-### 1. 环境要求
-
-- Node.js 18+
-- npm 9+
-
-### 2. 安装依赖
-
-```bash
-cd marketsignal
-npm install
-```
-
-### 3. 配置环境变量
-
-项目根目录下已有 `.env.example` 模板文件。复制并编辑 `.env.local`：
-
-```bash
-# 数据库（本地开发直接用 SQLite，无需额外配置）
-DATABASE_URL="file:./dev.db"
-
-# Anthropic API Key（必填，否则 AI 分析将使用占位模式）
-ANTHROPIC_API_KEY="sk-ant-api03-你的真实Key"
-
-# AI 开关（额度紧张时可设为 false 暂停 AI 调用）
-ENABLE_AI=true
-
-# 定时任务鉴权密钥（本地开发可用默认值）
-CRON_SECRET="dev-secret-change-in-production"
-```
-
-### 4. 初始化数据库
-
-```bash
-npx prisma migrate dev --name init
-npx prisma generate
-```
-
-### 5. 填充示例数据（可选）
-
-```bash
-npx tsx prisma/seed.ts
-```
-
-这会写入 10 条带有预置 AI 分析的模拟新闻，方便立即体验仪表盘效果。
-
-### 6. 启动开发服务器
-
-```bash
-npm run dev
-```
-
-浏览器打开 `http://localhost:3000` 即可看到仪表盘。
-
----
-
-## 使用指南
-
-### 仪表盘界面
-
-```
-┌──────────────────────────────────────────────────┐
-│ 📊 MarketSignal              中文 | ☀ | ↻ 01:23 │  ← 顶栏
-├──────────────────────────────────────────────────┤
-│ 📰 总计 60    📈 利好 24    📉 利空 20    ➖ 中性 16 │  ← 统计栏
-│                         🕐 更新于 3h ago          │     (每2分钟自动刷新)
-├──────────────────────────────────────────────────┤
-│ [利好] [利空] [中性]   [全部来源 ▼] [全部板块 ▼]    │  ← 筛选栏
-├──────────────────────────────────────────────────┤
-│ ▌ CNBC · 2h ago                                  │
-│ ▌ Trump threatens Iran with AI picture...        │  ← 新闻卡片
-│ ▌ Bearish | Energy, Industrials...               │     (绿/红/灰左边条)
-│ ▌ Short airline ETFs, long crude oil futures...  │
-├──────────────────────────────────────────────────┤
-│ ▌ CNBC · 3h ago                                  │
-│ ▌ OpenAI's subtle drift from Microsoft...        │
-│ ▌ Bullish | Technology                           │
-├──────────────────────────────────────────────────┤
-│         [ 加载更多 (52 remaining) ]               │  ← 分页
-├──────────────────────────────────────────────────┤
-│  AI 分析仅供参考，不构成投资建议 (NFA)              │  ← 免责声明
-└──────────────────────────────────────────────────┘
-```
-
-### 筛选新闻
-
-- **情绪筛选**：点击顶部的 `利好` / `利空` / `中性` 按钮，筛选对应情绪的新闻。再次点击取消筛选
-- **来源筛选**：下拉菜单选择特定媒体（CNBC、Reuters 等）
-- **板块筛选**：下拉菜单选择特定行业（Technology、Energy 等）
-- **清除筛选**：点击 `Clear` 按钮重置所有筛选条件
-
-筛选参数会同步到 URL（如 `?sentiment=Bullish&source=CNBC`），可分享筛选后的页面链接。
-
-### 查看详情
-
-点击任意新闻卡片，页面正中弹出分析详情弹窗。弹窗包含四个层次分明的区块：
-
-1. **情绪横幅** — 顶部彩色区块显示 AI 判断的市场情绪，绿色利好 / 红色利空 / 灰色中性，附带大图标和双语标签
-2. **AI 摘要** — 带背景卡片包裹的 2-3 句话 Bloomberg 风格总结
-3. **影响板块** — 受影响的行业标签，以独立卡片呈现
-4. **投资洞察** — 琥珀色高亮的交易建议，含具体标的和操作方向
-
-按 `Esc` 键或点击遮罩层关闭弹窗。
-
-### 手动抓取新闻
-
-开发环境下，Vercel Cron 不会自动运行。使用以下命令手动触发新闻抓取和 AI 分析：
-
-**PowerShell：**
-```powershell
-curl.exe -X POST http://localhost:3000/api/cron/ingest -H "Authorization: Bearer dev-secret-change-in-production"
-```
-
-**Bash / Git Bash：**
-```bash
-curl -X POST http://localhost:3000/api/cron/ingest -H "Authorization: Bearer dev-secret-change-in-production"
-```
-
-返回示例：
-```json
-{
-  "fetched": 40,
-  "new": 12,
-  "analyzed": 12,
-  "errors": [
-    "Reuters: Status code 404",
-    "Bloomberg: Request timed out after 15000ms"
-  ]
-}
-```
-
-`fetched` 为本次抓取总数，`new` 为去重后新增数，`analyzed` 为 AI 分析成功数，`errors` 列出失败的源（网络问题，属正常现象）。
-
-### 批量重分析
-
-如果修改了 AI Prompt 或想用最新模型重新分析所有历史数据：
-
-```bash
-npx tsx scripts/reanalyze-all.ts
-```
-
-这会逐条调用 Claude 重新分析数据库中的每一条新闻，并用新结果覆盖旧数据。60 条数据约需 1-2 分钟。
-
-### 暂停 / 恢复 AI 分析
-
-当 API 额度紧张时，在 `.env.local` 中将 `ENABLE_AI` 设为 `false`：
-
-```bash
-ENABLE_AI=false
-```
-
-重启 `npm run dev` 后，新闻照常抓取和入库，但 AI 分析步骤跳过，界面显示 "分析中..."。恢复时改回 `true` 即可，未分析的条目会在下次 cron 触发时自动补完。
-
-### 语言切换
-
-点击顶栏的 `中文` / `EN` 按钮切换界面语言。偏好保存在浏览器中，刷新后保持不变。首次访问自动检测浏览器语言。
-
----
-
-## API 接口
-
-| 路由 | 方法 | 鉴权 | 用途 |
-|------|------|------|------|
-| `/api/cron/ingest` | POST | CRON_SECRET | 触发 RSS 抓取 → 去噪 → 去重 → AI 分析全流程 |
-| `/api/news` | GET | 无 | 分页新闻列表，支持 `sentiment` / `source` / `sector` / `page` / `limit` 参数 |
-| `/api/news/[id]` | GET | 无 | 单条新闻完整详情 |
-| `/api/stats` | GET | 无 | 统计数据（总数 + 各情绪数量 + 最后更新时间） |
-| `/api/analyze` | POST | CRON_SECRET | 手动对单条新闻重新 AI 分析 |
-
-### 示例请求
-
-```bash
-# 获取第 2 页的利好新闻
-curl http://localhost:3000/api/news?sentiment=Bullish&page=2&limit=10
-
-# 获取统计数据
-curl http://localhost:3000/api/stats
-
-# 手动重新分析指定新闻
-curl -X POST http://localhost:3000/api/analyze \
-  -H "Authorization: Bearer dev-secret-change-in-production" \
-  -H "Content-Type: application/json" \
-  -d '{"newsId":"cmok3dhjo000296dwxujpq7kv"}'
-```
-
----
-
-## 生产部署
-
-### 1. 推送到 GitHub
-
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin <你的仓库地址>
-git push -u origin main
-```
-
-### 2. 创建 Supabase 项目
-
-在 [supabase.com](https://supabase.com) 创建免费项目，获取连接字符串。
-
-### 3. 修改数据库配置
-
-更新 `prisma/schema.prisma`，将 provider 从 `sqlite` 改为 `postgresql`。
-
-在 Vercel 项目 Settings → Environment Variables 中设置：
-
-```bash
-DATABASE_URL="postgresql://postgres.[ref]:[password]@[host].pooler.supabase.com:6543/postgres"
-DIRECT_DATABASE_URL="postgresql://postgres.[ref]:[password]@[host].supabase.com:5432/postgres"
-ANTHROPIC_API_KEY="sk-ant-api03-..."
-CRON_SECRET="生成一个强随机字符串"
-ENABLE_AI=true
-```
-
-### 4. 部署到 Vercel
-
-在 [vercel.com](https://vercel.com) 导入 GitHub 仓库，部署后 Vercel Cron 会自动每 5 分钟触发 `/api/cron/ingest`。
-
-### 5. 生产环境迁移数据库
-
-```bash
-npx prisma migrate deploy
-```
-
----
-
-## 常见问题
-
-**Q: RSS 抓取报错 403/404/超时？**
-
-A: 部分外媒 RSS 在国内网络环境下受限。CNBC 和 MarketWatch 通常可用。管道会跳过失败的源继续处理其他源，不影响整体运行。
-
-**Q: AI 分析返回 Neutral 或空结果？**
-
-A: 检查 `.env.local` 中 `ENABLE_AI` 是否为 `true`，API Key 是否填写正确。可通过 `npx tsx scripts/reanalyze-all.ts` 批量重分析。
-
-**Q: 仪表盘没有数据显示？**
-
-A: 数据库可能为空。先运行 `npx tsx prisma/seed.ts` 生成示例数据，或手动触发一次抓取。
-
-**Q: 页面出现 Hydration 水合错误？**
-
-A: 清除 `.next` 缓存后重启：`rm -rf .next && npm run dev`。
-
----
-
-## 免责声明
-
-**本平台所有 AI 生成的分析内容仅供参考，不构成任何投资建议（NFA）。** 过往表现不代表未来结果。在做出任何投资决策前，请务必自行研究并咨询持牌金融顾问。
+发布前请确认上述配置、数据保护和验证步骤均已完成。

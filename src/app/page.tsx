@@ -3,6 +3,7 @@ import { PAGE_SIZE } from "@/lib/utils/constants";
 import { parseSectors } from "@/lib/utils/helpers";
 import { DashboardClient } from "@/components/dashboard/DashboardClient";
 import type { NewsItemData, PaginatedResponse } from "@/types";
+import { isLegacyPlaceholder, validAnalysisFilter } from "@/lib/ai/legacy";
 
 function deserializeItem(item: {
   id: string;
@@ -18,13 +19,16 @@ function deserializeItem(item: {
   analyzedAt: Date | null;
   ingestedAt: Date;
 }): NewsItemData {
+  const placeholder = isLegacyPlaceholder(item.summary);
   return {
     ...item,
     publishedAt: item.publishedAt.toISOString(),
     ingestedAt: item.ingestedAt.toISOString(),
-    analyzedAt: item.analyzedAt?.toISOString() ?? null,
-    sentiment: item.sentiment as NewsItemData["sentiment"],
-    impactSectors: parseSectors(item.impactSectors),
+    analyzedAt: placeholder ? null : item.analyzedAt?.toISOString() ?? null,
+    summary: placeholder ? null : item.summary,
+    actionableAdvice: placeholder ? null : item.actionableAdvice,
+    sentiment: placeholder ? null : item.sentiment as NewsItemData["sentiment"],
+    impactSectors: placeholder ? [] : parseSectors(item.impactSectors),
   };
 }
 
@@ -39,9 +43,9 @@ export default async function HomePage() {
 
   // Fetch sentiment counts
   const [bullishCount, bearishCount, neutralCount] = await Promise.all([
-    prisma.newsItem.count({ where: { sentiment: "Bullish" } }),
-    prisma.newsItem.count({ where: { sentiment: "Bearish" } }),
-    prisma.newsItem.count({ where: { sentiment: "Neutral" } }),
+    prisma.newsItem.count({ where: { sentiment: "Bullish", ...validAnalysisFilter } }),
+    prisma.newsItem.count({ where: { sentiment: "Bearish", ...validAnalysisFilter } }),
+    prisma.newsItem.count({ where: { sentiment: "Neutral", ...validAnalysisFilter } }),
   ]);
 
   // Get last ingested timestamp

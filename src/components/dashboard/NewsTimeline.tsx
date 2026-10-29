@@ -8,12 +8,14 @@ import { SkeletonCard } from "./SkeletonCard";
 import { useLanguage } from "@/providers/language-provider";
 import type { NewsItemData, PaginatedResponse } from "@/types";
 import { AlertCircle, Inbox, Loader2 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 interface NewsTimelineProps {
   initialData: PaginatedResponse<NewsItemData>;
+  refreshVersion: number;
 }
 
-export function NewsTimeline({ initialData }: NewsTimelineProps) {
+export function NewsTimeline({ initialData, refreshVersion }: NewsTimelineProps) {
   const { t } = useLanguage();
   const [items, setItems] = useState<NewsItemData[]>(initialData.items);
   const [pagination, setPagination] = useState(initialData.pagination);
@@ -21,14 +23,18 @@ export function NewsTimeline({ initialData }: NewsTimelineProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const [currentUrl, setCurrentUrl] = useState("");
+  const searchParams = useSearchParams();
+  const query = searchParams.toString();
   useEffect(() => {
-    const url = window.location.search;
-    if (url !== currentUrl) {
-      setCurrentUrl(url);
+    const controller = new AbortController();
+    const params = new URLSearchParams(query);
+    params.set("page", "1");
+    params.set("limit", "20");
+    Promise.resolve().then(() => {
+      if (controller.signal.aborted) return;
       setLoading(true);
       setError(null);
-      fetch(`/api/news${url}${url ? "&" : "?"}page=1&limit=20`)
+      fetch(`/api/news?${params.toString()}`, { signal: controller.signal })
         .then((res) => {
           if (!res.ok) throw new Error("Failed to fetch");
           return res.json();
@@ -37,10 +43,11 @@ export function NewsTimeline({ initialData }: NewsTimelineProps) {
           setItems(data.items);
           setPagination(data.pagination);
         })
-        .catch((err) => setError(err.message))
-        .finally(() => setLoading(false));
-    }
-  }, [currentUrl]);
+        .catch((err) => { if (!controller.signal.aborted) setError(err.message); })
+        .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    });
+    return () => controller.abort();
+  }, [query, refreshVersion]);
 
   const loadMore = useCallback(async () => {
     const nextPage = pagination.page + 1;
@@ -73,7 +80,7 @@ export function NewsTimeline({ initialData }: NewsTimelineProps) {
     );
   }
 
-  if (error && items.length === 0) {
+  if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <AlertCircle className="mb-3 h-10 w-10 text-destructive" />

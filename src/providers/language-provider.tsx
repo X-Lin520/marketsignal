@@ -32,6 +32,7 @@ export function LanguageProvider({
   }, []);
 
   useEffect(() => {
+    const timer = setTimeout(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === "zh" || stored === "en") {
       // Cookie + localStorage in sync — align state if needed
@@ -47,6 +48,8 @@ export function LanguageProvider({
         persistLanguage(detected);
       }
     }
+    }, 0);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
