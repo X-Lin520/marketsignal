@@ -5,14 +5,10 @@ import { deduplicate } from "@/lib/rss/deduplicator";
 import { runAnalysisPipeline } from "@/lib/ai/pipeline";
 import { prisma } from "@/lib/db/prisma";
 import type { IngestSummary } from "@/types";
+import { authorized } from "@/lib/auth";
 
-export async function POST(request: Request) {
-  // Auth check
-  const authHeader = request.headers.get("authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  const secret = process.env.CRON_SECRET;
-
-  if (!secret || token !== secret) {
+async function ingest(request: Request, secret: string | undefined) {
+  if (!authorized(request, secret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -34,8 +30,9 @@ export async function POST(request: Request) {
     const newItems = await deduplicate(cleanItems);
 
     // Step 4: Insert new items (unanalyzed)
+    let inserted = 0;
     if (newItems.length > 0) {
-      await prisma.newsItem.createMany({
+      const result = await prisma.newsItem.createMany({
         data: newItems.map((item) => ({
           title: item.title,
           link: item.link,
@@ -43,7 +40,9 @@ export async function POST(request: Request) {
           publishedAt: item.publishedAt,
           contentSnippet: item.contentSnippet,
         })),
+        skipDuplicates: true,
       });
+      inserted = result.count;
     }
 
     // Step 5: Run AI analysis on all unanalyzed items
@@ -52,7 +51,7 @@ export async function POST(request: Request) {
 
     const summary: IngestSummary = {
       fetched: allItems.length,
-      new: newItems.length,
+      new: inserted,
       analyzed: analysisResult.analyzed,
       errors,
     };
@@ -67,3 +66,7 @@ export async function POST(request: Request) {
     );
   }
 }
+
+// Vercel Cron 使用 GET；手动调用仍可使用 POST，并共享鉴权逻辑。
+export function GET(request: Request) { return ingest(request, process.env.CRON_SECRET); }
+export function POST(request: Request) { return ingest(request, process.env.ADMIN_SECRET); }

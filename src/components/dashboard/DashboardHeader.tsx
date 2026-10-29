@@ -22,13 +22,12 @@ interface DashboardHeaderProps {
 }
 
 function useElapsed(lastRefresh: Date) {
-  const [elapsed, setElapsed] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    setElapsed(0);
-    const timer = setInterval(() => setElapsed((n) => n + 1), 1000);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [lastRefresh]);
-  return elapsed;
+  }, []);
+  return Math.max(0, Math.floor((now - lastRefresh.getTime()) / 1000));
 }
 
 export function DashboardHeader({

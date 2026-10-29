@@ -8,7 +8,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SENTIMENT_COLORS } from "@/lib/utils/constants";
@@ -58,7 +57,6 @@ export function NewsDetailSheet({
   const sentimentKey = item.sentiment ?? "Pending";
   const colors = SENTIMENT_COLORS[sentimentKey];
   const Icon = item.sentiment ? sentimentIcons[item.sentiment] : Minus;
-  const hasAnalysis = item.analyzedAt !== null;
   const locale = language === "zh" ? "zh-CN" : "en-US";
 
   return (

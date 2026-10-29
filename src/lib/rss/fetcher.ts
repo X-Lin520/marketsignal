@@ -1,5 +1,5 @@
 import Parser from "rss-parser";
-import type { RawFeedItem, FetchResult, NormalizedItem } from "./types";
+import type { RawFeedItem, FetchResult } from "./types";
 import { RSS_SOURCES } from "./sources";
 import { normalizeItems } from "./parser";
 

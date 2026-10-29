@@ -30,8 +30,18 @@ function deserializeItem(item: {
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
-  const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? String(PAGE_SIZE), 10)));
+  const pageText = searchParams.get("page") ?? "1";
+  const limitText = searchParams.get("limit") ?? String(PAGE_SIZE);
+  if (!/^\d+$/.test(pageText) || !/^\d+$/.test(limitText)) {
+    return NextResponse.json({ error: "page and limit must be positive integers" }, { status: 400 });
+  }
+  const pageValue = Number(pageText);
+  const limitValue = Number(limitText);
+  if (!Number.isSafeInteger(pageValue) || pageValue < 1 || !Number.isSafeInteger(limitValue) || limitValue < 1) {
+    return NextResponse.json({ error: "page and limit must be positive integers" }, { status: 400 });
+  }
+  const page = pageValue;
+  const limit = Math.min(50, limitValue);
   const sentiment = searchParams.get("sentiment");
   const source = searchParams.get("source");
   const sector = searchParams.get("sector");

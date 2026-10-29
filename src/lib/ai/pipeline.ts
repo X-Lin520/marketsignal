@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/db/prisma";
 import { analyzeNewsItem } from "./client";
-import { FALLBACK_ANALYSIS } from "./parser";
 
 const CONCURRENCY = 5;
 const BATCH_DELAY_MS = 500;
+// 限制每次自动采集产生的模型调用次数，剩余新闻保留到后续任务。
+const MAX_ITEMS_PER_RUN = 10;
 function formatSectors(sectors: string[]): string[] {
   return sectors;
 }
@@ -18,34 +19,19 @@ function isAiEnabled(): boolean {
     process.env.OPENAI_API_KEY !== "sk-ant-...";
 }
 
-async function analyzeWithFallback(title: string, contentSnippet: string | null, source: string) {
-  if (!isAiEnabled()) {
-    return { ...FALLBACK_ANALYSIS, summary: `[Pending analysis] ${title}` };
-  }
-
-  try {
-    return await analyzeNewsItem({
-      title,
-      link: "",
-      source,
-      publishedAt: new Date(),
-      contentSnippet,
-    });
-  } catch (err) {
-    console.error(`[AI] Analysis failed for "${title.slice(0, 60)}...":`, err);
-    return FALLBACK_ANALYSIS;
-  }
-}
-
 export async function runAnalysisPipeline(): Promise<{
   analyzed: number;
   failed: number;
   errors: string[];
 }> {
+  if (!isAiEnabled()) {
+    return { analyzed: 0, failed: 0, errors: ["AI analysis is disabled or not configured; items remain pending."] };
+  }
   const unanalyzed = await prisma.newsItem.findMany({
     where: { analyzedAt: null },
-    select: { id: true, title: true, contentSnippet: true, source: true },
+    select: { id: true, title: true, link: true, publishedAt: true, contentSnippet: true, source: true },
     orderBy: { publishedAt: "desc" },
+    take: MAX_ITEMS_PER_RUN,
   });
 
   if (unanalyzed.length === 0) {
@@ -61,11 +47,7 @@ export async function runAnalysisPipeline(): Promise<{
 
     const results = await Promise.allSettled(
       batch.map(async (record) => {
-        const analysis = await analyzeWithFallback(
-          record.title,
-          record.contentSnippet,
-          record.source,
-        );
+        const analysis = await analyzeNewsItem(record);
         await prisma.newsItem.update({
           where: { id: record.id },
           data: {
