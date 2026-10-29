@@ -228,7 +228,7 @@ test("重新分析失败时保留历史结果，成功后才更新", async () =>
   );
   const response = await route.POST({
     key,
-    json: async () => ({ cursor: null }),
+    json: async () => ({ newsIds: ["one", "two"] }),
   });
   assert.equal(response.data.succeeded, 1);
   assert.equal(response.data.failed, 1);
@@ -244,6 +244,43 @@ const validAnalysis = {
   impactSectors: ["Technology"],
   actionableAdvice: "Observe the market.",
 };
+
+test("批量分析拒绝旧游标、超额和重复条目，避免意外遍历全库", async () => {
+  let touched = false;
+  const route = load(
+    "src/app/api/reanalyze/route.ts",
+    {
+      "next/server": {
+        NextResponse: {
+          json: (data, init = {}) => ({ data, status: init.status ?? 200 }),
+        },
+      },
+      "@/lib/auth": { authorized: () => true },
+      "@/lib/db/prisma": {
+        prisma: {
+          newsItem: {
+            findMany: async () => {
+              touched = true;
+              return [];
+            },
+          },
+        },
+      },
+      "@/lib/ai/client": {},
+    },
+    { ENABLE_AI: "true", OPENAI_API_KEY: "test-only-value" },
+  );
+  for (const body of [
+    { cursor: null },
+    { newsIds: [] },
+    { newsIds: ["a", "a"] },
+    { newsIds: Array.from({ length: 11 }, (_, i) => String(i)) },
+  ]) {
+    const response = await route.POST({ json: async () => body });
+    assert.equal(response.status, 400);
+  }
+  assert.equal(touched, false);
+});
 const sampleNews = {
   id: "c" + "1".repeat(24),
   title: "Synthetic market news",
