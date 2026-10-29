@@ -39,7 +39,10 @@ export async function analyzeNewsItem(
     try {
       return await getClient().chat.completions.create({
         model: "deepseek-flash",
-        max_tokens: 600,
+        // 短新闻只生成最终结果，避免思考过程耗尽正文预算。
+        reasoning_effort: "none",
+        response_format: { type: "json_object" },
+        max_tokens: 1024,
         temperature: 0.1,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
