@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { PAGE_SIZE } from "@/lib/utils/constants";
 import { parseSectors } from "@/lib/utils/helpers";
 import type { PaginatedResponse, NewsItemData } from "@/types";
+import { isLegacyPlaceholder, validAnalysisFilter } from "@/lib/ai/legacy";
 
 function deserializeItem(item: {
   id: string;
@@ -18,13 +19,16 @@ function deserializeItem(item: {
   analyzedAt: Date | null;
   ingestedAt: Date;
 }): NewsItemData {
+  const placeholder = isLegacyPlaceholder(item.summary);
   return {
     ...item,
     publishedAt: item.publishedAt.toISOString(),
     ingestedAt: item.ingestedAt.toISOString(),
-    analyzedAt: item.analyzedAt?.toISOString() ?? null,
-    sentiment: item.sentiment as NewsItemData["sentiment"],
-    impactSectors: parseSectors(item.impactSectors),
+    analyzedAt: placeholder ? null : item.analyzedAt?.toISOString() ?? null,
+    summary: placeholder ? null : item.summary,
+    actionableAdvice: placeholder ? null : item.actionableAdvice,
+    sentiment: placeholder ? null : item.sentiment as NewsItemData["sentiment"],
+    impactSectors: placeholder ? [] : parseSectors(item.impactSectors),
   };
 }
 
@@ -52,6 +56,7 @@ export async function GET(request: NextRequest) {
   const where: Record<string, any> = {};
   if (sentiment && ["Bullish", "Bearish", "Neutral"].includes(sentiment)) {
     where.sentiment = sentiment;
+    Object.assign(where, validAnalysisFilter);
   }
   if (source) {
     where.source = source;

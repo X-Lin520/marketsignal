@@ -19,6 +19,14 @@ test('损坏的 AI 结果不会被当作中性分析', () => {
   assert.throws(() => parser.parseAiResponse('invalid JSON'), /could not be parsed/);
 });
 
+test('旧版失败占位被识别，但真实摘要不会被误判', () => {
+  const legacy = load('src/lib/ai/legacy.ts', {});
+  assert.equal(legacy.isLegacyPlaceholder('Unable to analyze this article.'), true);
+  assert.equal(legacy.isLegacyPlaceholder('[Pending analysis] Example'), true);
+  assert.equal(legacy.isLegacyPlaceholder('Genuine market analysis.'), false);
+  assert.equal(legacy.isLegacyPlaceholder(null), false);
+});
+
 test('AI 关闭时不读取或写入新闻', async () => {
   let touched = false;
   const pipeline = load('src/lib/ai/pipeline.ts', { '@/lib/db/prisma': { prisma: { newsItem: { findMany() { touched = true; } } } }, './client': {} }, { ENABLE_AI: 'false' });

@@ -30,7 +30,7 @@ export const translations = {
         noNewsHint: "Try adjusting your filters or check back later.",
         failedToLoad: "Failed to load news",
         retry: "Retry",
-        processing: "Processing...",
+        processing: "Analysis pending",
       },
       detail: {
         aiSentiment: "AI Sentiment Assessment",
@@ -42,7 +42,7 @@ export const translations = {
         noAction: "No specific action recommended.",
         analyzed: "Analyzed",
         original: "Original",
-        analysisPending: "Analysis pending — this item will be processed shortly.",
+        analysisPending: "Analysis is pending or unavailable.",
         disclaimer:
           "AI-generated analysis is for informational purposes only and does not constitute financial advice (NFA).",
       },
@@ -88,7 +88,7 @@ export const translations = {
         noNewsHint: "请调整筛选条件或稍后再来。",
         failedToLoad: "加载新闻失败",
         retry: "重试",
-        processing: "分析中...",
+        processing: "待分析",
       },
       detail: {
         aiSentiment: "AI 情绪评估",
@@ -100,7 +100,7 @@ export const translations = {
         noAction: "暂无具体操作建议。",
         analyzed: "分析时间",
         original: "原文",
-        analysisPending: "分析待处理 — 该条目将很快被处理。",
+        analysisPending: "分析待处理或暂不可用。",
         disclaimer:
           "AI 生成的分析仅供参考，不构成任何投资建议（NFA）。",
       },
