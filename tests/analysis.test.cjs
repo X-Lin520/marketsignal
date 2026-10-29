@@ -29,10 +29,28 @@ test('旧版失败占位被识别，但真实摘要不会被误判', () => {
 
 test('AI 关闭时不读取或写入新闻', async () => {
   let touched = false;
-  const pipeline = load('src/lib/ai/pipeline.ts', { '@/lib/db/prisma': { prisma: { newsItem: { findMany() { touched = true; } } } }, './client': {} }, { ENABLE_AI: 'false' });
+  const pipeline = load('src/lib/ai/pipeline.ts', { '@/lib/db/prisma': { prisma: { newsItem: { findMany() { touched = true; } } } }, './client': {}, './errors': { safeAiError: () => 'error' } }, { ENABLE_AI: 'false' });
   const result = await pipeline.runAnalysisPipeline();
   assert.equal(result.analyzed, 0);
   assert.equal(touched, false);
+});
+
+test('供应商错误只显示安全提示，不暴露原始密钥片段', () => {
+  const { safeAiError } = load('src/lib/ai/errors.ts', {});
+  const marker = randomBytes(12).toString('hex');
+  assert.equal(safeAiError({ status: 401, message: marker }).includes(marker), false);
+  assert.match(safeAiError({ status: 401 }), /认证失败/);
+});
+
+test('模型客户端使用 DeepSeek 接口和模型', async () => {
+  let options, request;
+  class FakeClient {
+    constructor(config) { options = config; this.chat = { completions: { create: async (params) => { request = params; return { choices: [{ message: { content: 'ok' } }] }; } } }; }
+  }
+  const client = load('src/lib/ai/client.ts', { openai: { __esModule: true, default: FakeClient }, './prompt': { SYSTEM_PROMPT: 'test', buildUserMessage: () => 'test' }, './parser': { parseAiResponse: (x) => x } }, { OPENAI_API_KEY: randomBytes(24).toString('hex') });
+  await client.analyzeNewsItem({});
+  assert.equal(options.baseURL, 'https://api.deepseek.com');
+  assert.equal(request.model, 'deepseek-flash');
 });
 
 test('相同批次的重复链接只保留一次', async () => {
@@ -62,6 +80,7 @@ test('重新分析失败时保留历史结果，成功后才更新', async () =>
     '@/lib/auth': { authorized: (request, secret) => request.key === secret },
     '@/lib/db/prisma': { prisma: { newsItem: { findMany: async () => rows, update: async (data) => writes.push(data) } } },
     '@/lib/ai/client': { analyzeNewsItem: async (row) => { if (row.id === 'one') throw new Error('offline'); return { summary: 'new', sentiment: 'Bullish', impactSectors: [], actionableAdvice: null }; } },
+    '@/lib/ai/errors': { safeAiError: () => 'safe error' },
   }, { ADMIN_SECRET: key, ENABLE_AI: 'true', OPENAI_API_KEY: 'test-only-value' });
   const response = await route.POST({ key, json: async () => ({ cursor: null }) });
   assert.equal(response.data.succeeded, 1);

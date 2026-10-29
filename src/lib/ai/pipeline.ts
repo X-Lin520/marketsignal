@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { analyzeNewsItem } from "./client";
+import { safeAiError } from "./errors";
 
 const CONCURRENCY = 5;
 const BATCH_DELAY_MS = 500;
@@ -65,11 +66,8 @@ export async function runAnalysisPipeline(): Promise<{
       if (result.status === "fulfilled") analyzed++;
       else {
         failed++;
-        errors.push(
-          result.reason instanceof Error
-            ? result.reason.message
-            : String(result.reason),
-        );
+        const message = safeAiError(result.reason);
+        if (!errors.includes(message)) errors.push(message);
       }
     }
 
