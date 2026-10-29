@@ -151,6 +151,9 @@ test("模型客户端使用 DeepSeek 接口和模型", async () => {
   await client.analyzeNewsItem({});
   assert.equal(options.baseURL, "https://api.deepseek.com");
   assert.equal(request.model, "deepseek-flash");
+  assert.equal(request.reasoning_effort, "none");
+  assert.equal(request.response_format.type, "json_object");
+  assert.equal(request.max_tokens, 1024);
 });
 
 test("相同批次的重复链接只保留一次", async () => {
