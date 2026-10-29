@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authorized } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { analyzeNewsItem } from "@/lib/ai/client";
+import { safeAiError } from "@/lib/ai/errors";
 
 // 分批处理，只有成功取得新结果后才覆盖原记录；失败保留原结果。
 export async function POST(request: Request) {
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
       succeeded++;
     } catch (error) {
       failed++;
-      console.error("[AI] Re-analysis failed:", row.id, error);
+      console.error("[AI] Re-analysis failed:", row.id, safeAiError(error));
     }
   }
   return NextResponse.json({ succeeded, failed, nextCursor: rows.length === 10 ? rows[rows.length - 1].id : null });

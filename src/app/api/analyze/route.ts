@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { analyzeNewsItem } from "@/lib/ai/client";
 import { parseSectors } from "@/lib/utils/helpers";
 import { authorized } from "@/lib/auth";
+import { safeAiError } from "@/lib/ai/errors";
 
 
 export async function POST(request: Request) {
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Re-analysis failed";
+    const message = safeAiError(err);
     console.error("[API] Analyze error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }

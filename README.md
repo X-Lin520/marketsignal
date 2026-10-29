@@ -1,11 +1,11 @@
 # MarketSignal
 
-财经新闻监控仪表盘：从 RSS 采集新闻，以 OpenAI 分析摘要、情绪和受影响板块，并提供筛选与原文链接。AI 输出仅供参考，不构成投资建议。
+财经新闻监控仪表盘：从 RSS 采集新闻，以 DeepSeek 分析摘要、情绪和受影响板块，并提供筛选与原文链接。AI 输出仅供参考，不构成投资建议。
 
 ## 现状和前提
 
 - Next.js 16、React 19、Prisma 6 和 **PostgreSQL**；当前 schema 不支持 SQLite。
-- AI 使用 OpenAI `gpt-4.1-mini`。关闭或失败的分析保持待处理，不计作中性。
+- AI 使用 DeepSeek `deepseek-flash`。为兼容现有部署，DeepSeek API key 仍存于服务端 `OPENAI_API_KEY` 变量。关闭或失败的分析保持待处理，不计作中性。
 - `vercel.json` 当前配置为 **每天 UTC 00:00**，并非每 5 分钟。实际频率需结合 Vercel 套餐限制和 API 成本确定。
 - 每次采集最多自动分析 10 条待处理新闻，剩余条目保留到后续任务；手动重分析仍需单独操作并可能产生额外费用。
 - 仓库保留的旧迁移是 SQLite 格式，与当前 PostgreSQL schema 不一致。生产库应先备份，核对现有 schema 和迁移历史，制定并演练 PostgreSQL 基线迁移及回滚；不要直接对生产库执行 `db push` 或旧迁移。
@@ -14,7 +14,7 @@
 
 1. 准备 Node.js 20.9 或以上版本和独立的 PostgreSQL 测试数据库。
 2. 安装依赖：`npm ci`。
-3. 从 `.env.example` 复制到 `.env.local`，设置 `DATABASE_URL`、`DIRECT_URL`。如需 AI，设置 `OPENAI_API_KEY` 和 `ENABLE_AI=true`；否则设置 `ENABLE_AI=false`。生成独立随机的 `CRON_SECRET` 和 `ADMIN_SECRET`，不要添加到代码或提交到 Git。
+3. 从 `.env.example` 复制到 `.env.local`，设置 `DATABASE_URL`、`DIRECT_URL`。如需 AI，设置 `OPENAI_API_KEY` 为 DeepSeek API key 并设置 `ENABLE_AI=true`；否则设置 `ENABLE_AI=false`。生成独立随机的 `CRON_SECRET` 和 `ADMIN_SECRET`，不要添加到代码或提交到 Git。
 4. **仅对新的、可丢弃的本地测试库**：运行 `npx prisma db push`、`npx prisma generate`；可选运行 `npm run db:seed` 加入模拟新闻。示例内容和链接并非实时新闻。
 5. 运行 `npm run dev`，打开 `http://localhost:3000`。
 

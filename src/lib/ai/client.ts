@@ -11,7 +11,8 @@ function getClient(): OpenAI {
     if (!apiKey || apiKey === "sk-...") {
       throw new Error("OPENAI_API_KEY is not configured");
     }
-    openai = new OpenAI({ apiKey });
+    // 现有环境变量中保存的是 DeepSeek 密钥；使用兼容接口而不是 OpenAI 服务。
+    openai = new OpenAI({ apiKey, baseURL: "https://api.deepseek.com" });
   }
   return openai;
 }
@@ -29,7 +30,7 @@ export async function analyzeNewsItem(
   const client = getClient();
 
   const response = await client.chat.completions.create({
-    model: "gpt-4.1-mini",
+    model: "deepseek-flash",
     max_tokens: 600,
     temperature: 0.1,
     messages: [
