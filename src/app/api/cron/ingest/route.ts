@@ -68,5 +68,13 @@ async function ingest(request: Request, secret: string | undefined) {
 }
 
 // Vercel Cron 使用 GET；手动调用仍可使用 POST，并共享鉴权逻辑。
-export function GET(request: Request) { return ingest(request, process.env.CRON_SECRET); }
+export function GET(request: Request) {
+  const secret = process.env.CRON_SECRET;
+  // 旧版可能曾把同一个密钥打包到前端；相同时暂停定时任务，避免任意访客触发收费调用。
+  if (secret && secret === process.env.NEXT_PUBLIC_CRON_SECRET) {
+    console.error("[Cron] A public variable matches the cron secret. Rotate the cron secret before enabling scheduled ingestion.");
+    return NextResponse.json({ error: "Scheduled ingestion is unavailable until its secret is rotated." }, { status: 503 });
+  }
+  return ingest(request, secret);
+}
 export function POST(request: Request) { return ingest(request, process.env.ADMIN_SECRET); }

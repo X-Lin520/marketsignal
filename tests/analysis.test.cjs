@@ -41,6 +41,18 @@ test('相同批次的重复链接只保留一次', async () => {
   assert.equal(result.length, 1);
 });
 
+test('定时任务密钥与公开变量相同时，拒绝运行', async () => {
+  const key = randomBytes(24).toString('hex');
+  const mocks = {
+    'next/server': { NextResponse: { json: (data, init = {}) => ({ data, status: init.status ?? 200 }) } },
+    '@/lib/rss/fetcher': {}, '@/lib/rss/noise-filter': {}, '@/lib/rss/deduplicator': {},
+    '@/lib/ai/pipeline': {}, '@/lib/db/prisma': {}, '@/lib/auth': { authorized: () => true },
+  };
+  const route = load('src/app/api/cron/ingest/route.ts', mocks, { CRON_SECRET: key, NEXT_PUBLIC_CRON_SECRET: key });
+  const response = await route.GET({});
+  assert.equal(response.status, 503);
+});
+
 test('重新分析失败时保留历史结果，成功后才更新', async () => {
   const key = randomBytes(24).toString('hex');
   const rows = [{ id: 'one', title: 'first' }, { id: 'two', title: 'second' }];
