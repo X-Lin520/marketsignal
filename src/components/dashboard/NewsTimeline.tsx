@@ -14,12 +14,14 @@ interface NewsTimelineProps {
   initialData: PaginatedResponse<NewsItemData>;
   refreshVersion: number;
   onItemsChange: (items: NewsItemData[]) => void;
+  onAnalysisComplete?: () => void;
 }
 
 export function NewsTimeline({
   initialData,
   refreshVersion,
   onItemsChange,
+  onAnalysisComplete,
 }: NewsTimelineProps) {
   const { t } = useLanguage();
   const [items, setItems] = useState<NewsItemData[]>(
@@ -221,6 +223,12 @@ export function NewsTimeline({
         item={selectedItem}
         isOpen={!!selectedId}
         onClose={() => setSelectedId(null)}
+        onAnalyzed={(updated) => {
+          setItems((previous) =>
+            previous.map((item) => (item.id === updated.id ? updated : item)),
+          );
+          onAnalysisComplete?.();
+        }}
       />
     </>
   );

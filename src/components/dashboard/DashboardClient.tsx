@@ -262,6 +262,9 @@ export function DashboardClient({
         initialData={initialData}
         refreshVersion={refreshVersion}
         onItemsChange={onItemsChange}
+        onAnalysisComplete={() => {
+          void refreshData();
+        }}
       />
     </div>
   );
