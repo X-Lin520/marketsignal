@@ -27,6 +27,25 @@
 - 旧的 `/api/reset-analysis` 已停用。上线前仍应配置独立的访问控制、请求频率限制和监控；共享密钥不是完整的多用户登录系统。
 - 旧版本写入的占位“中性”结果不会自动修复。生产数据需先备份、识别占位记录，再决定是否重分析。
 
+## AI 失败排查
+
+在 Vercel Runtime Logs 中搜索 `[AI] Analysis diagnostic`。单条、采集和重分析分别标记 `operation=analyze/ingest/reanalyze`；用 `newsId` 关联同一新闻的模型输出与保存步骤。
+
+| code                    | 含义与核验字段                                                                         |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| `OUTPUT_TRUNCATED`      | 生成达到 Token 上限；核对 `finishReason=length`、`completionTokens`、`reasoningTokens` |
+| `OUTPUT_EMPTY`          | 模型返回空正文                                                                         |
+| `OUTPUT_INVALID_JSON`   | 经过既有恢复尝试后仍无法解析 JSON                                                      |
+| `OUTPUT_SCHEMA_INVALID` | 字段不合格；查看 `issues.field/code/limit`、`summaryLength`                            |
+| `SAVE_FAILED`           | 模型输出已通过校验，但数据库保存失败                                                   |
+| `PROVIDER_*`            | 认证、余额、限流、网络、超时或供应商服务错误                                           |
+
+日志只记录允许的元数据，不记录模型正文、原始错误消息、密钥或完整响应。`model_output_accepted` 仅表示输出通过校验，不能单独证明数据库已保存成功。缺失的结束原因标为 `missing`，不能按正常结束推断。
+
+排查时优先使用新闻详情中的单条分析，或经过 `ADMIN_SECRET` 鉴权的 `POST /api/analyze`，一次只提交一个 `newsId`。解析或字段校验失败不会自动重试模型；页面会给出分类提示，原结果保留。不要使用全部重分析来定位单条故障。
+
+诊断版本保留现有模型、600 Tokens 预算和 500 字符摘要上限，便于核验真实失败分支；它尚未修复生成约束不一致的问题。输出明确标记截断时会拒绝当作完整结果。真实调用仍会产生供应商费用。
+
 ## 检查与部署
 
 执行 `npx tsc --noEmit`、`npm run lint` 和 `npm run build`，并使用独立数据库验证采集、分析、筛选、错误处理和分页。部署前确认环境变量、数据库备份和恢复流程、管理员密钥以及定时任务是否符合套餐限制。部署后查看运行日志，并核对实际最新采集时间；构建成功不能证明数据链路正常。
