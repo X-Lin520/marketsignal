@@ -2,7 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Newspaper, TrendingDown, TrendingUp, Minus, Clock, RefreshCw, Download } from "lucide-react";
+import {
+  Newspaper,
+  TrendingDown,
+  TrendingUp,
+  Minus,
+  Clock,
+  RefreshCw,
+  Download,
+} from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils/helpers";
 import { useLanguage } from "@/providers/language-provider";
 
@@ -50,10 +58,30 @@ export function DashboardHeader({
   const minutesSinceRefresh = Math.floor(elapsed / 60);
 
   const stats = [
-    { label: t.dashboard.stats.total, value: totalNews, icon: Newspaper, color: "text-foreground" },
-    { label: t.dashboard.stats.bullish, value: bullishCount, icon: TrendingUp, color: "text-bullish" },
-    { label: t.dashboard.stats.bearish, value: bearishCount, icon: TrendingDown, color: "text-bearish" },
-    { label: t.dashboard.stats.neutral, value: neutralCount, icon: Minus, color: "text-neutral-sentiment" },
+    {
+      label: t.dashboard.stats.total,
+      value: totalNews,
+      icon: Newspaper,
+      color: "text-foreground",
+    },
+    {
+      label: t.dashboard.stats.bullish,
+      value: bullishCount,
+      icon: TrendingUp,
+      color: "text-bullish",
+    },
+    {
+      label: t.dashboard.stats.bearish,
+      value: bearishCount,
+      icon: TrendingDown,
+      color: "text-bearish",
+    },
+    {
+      label: t.dashboard.stats.neutral,
+      value: neutralCount,
+      icon: Minus,
+      color: "text-neutral-sentiment",
+    },
   ];
 
   return (
@@ -83,7 +111,8 @@ export function DashboardHeader({
             </span>
           )}
           <span className="tabular-nums text-terminal-text-muted/60">
-            {String(minutesSinceRefresh).padStart(2, "0")}:{String(secondsSinceRefresh).padStart(2, "0")}
+            {String(minutesSinceRefresh).padStart(2, "0")}:
+            {String(secondsSinceRefresh).padStart(2, "0")}
           </span>
           <Button
             variant="ghost"
@@ -93,7 +122,9 @@ export function DashboardHeader({
             className="h-6 w-6"
             aria-label="Refresh"
           >
-            <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`}
+            />
           </Button>
         </div>
       </div>
@@ -107,11 +138,16 @@ export function DashboardHeader({
           disabled={isFetching || isResetting}
           className="h-7 flex-1 text-xs"
         >
-          <Download className={`mr-1.5 h-3 w-3 ${isFetching ? "animate-spin" : ""}`} />
+          <Download
+            className={`mr-1.5 h-3 w-3 ${isFetching ? "animate-spin" : ""}`}
+          />
           {isFetching
-            ? (language === "zh" ? "正在抓取..." : "Fetching...")
-            : (language === "zh" ? "抓取最新新闻" : "Fetch News")
-          }
+            ? language === "zh"
+              ? "正在抓取..."
+              : "Fetching..."
+            : language === "zh"
+              ? "抓取最新新闻"
+              : "Fetch News"}
         </Button>
         <Button
           variant="outline"
@@ -120,11 +156,16 @@ export function DashboardHeader({
           disabled={isResetting || isFetching}
           className="h-7 flex-1 text-xs"
         >
-          <RefreshCw className={`mr-1.5 h-3 w-3 ${isResetting ? "animate-spin" : ""}`} />
+          <RefreshCw
+            className={`mr-1.5 h-3 w-3 ${isResetting ? "animate-spin" : ""}`}
+          />
           {isResetting
-            ? (language === "zh" ? "正在重分析..." : "Re-analyzing...")
-            : (language === "zh" ? "全部重新分析" : "Re-analyze All")
-          }
+            ? language === "zh"
+              ? "正在重分析..."
+              : "Re-analyzing..."
+            : language === "zh"
+              ? "重新分析下一批（最多10条）"
+              : "Analyze next batch (up to 10)"}
         </Button>
       </div>
     </div>

@@ -19,17 +19,25 @@ export async function POST(request: Request) {
       { status: 503 },
     );
   }
-  let cursor: string | null;
+  let newsIds: string[];
   try {
     const body = await request.json();
-    cursor = body.cursor ?? null;
-    if (cursor !== null && (typeof cursor !== "string" || cursor.length > 100))
-      throw new Error("invalid cursor");
+    if (
+      !Array.isArray(body.newsIds) ||
+      body.newsIds.length < 1 ||
+      body.newsIds.length > 10 ||
+      body.newsIds.some(
+        (id: unknown) => typeof id !== "string" || !id || id.length > 100,
+      ) ||
+      new Set(body.newsIds).size !== body.newsIds.length
+    )
+      throw new Error("invalid batch");
+    newsIds = body.newsIds;
   } catch {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
   const rows = await prisma.newsItem.findMany({
-    where: cursor ? { id: { gt: cursor } } : {},
+    where: { id: { in: newsIds } },
     orderBy: { id: "asc" },
     take: 10,
   });
@@ -58,6 +66,6 @@ export async function POST(request: Request) {
   return NextResponse.json({
     succeeded,
     failed,
-    nextCursor: rows.length === 10 ? rows[rows.length - 1].id : null,
+    processed: rows.length,
   });
 }
