@@ -20,7 +20,9 @@ flowchart LR
 
 ## 2. 在 Vercel 导入项目
 
-进入 Vercel 控制台的项目创建入口，选择刚才 Fork 的仓库。找到 **Environment Variables**（环境变量）区域，分别填写：
+1. 在 Vercel 控制台选择 **New Project**。如果系统要求连接 GitHub，选择自己的账户并按照页面提示授权访问刚才 Fork 的仓库。
+2. 在仓库列表中找到自己账户下的 `marketsignal`，点击 **Import**。找不到仓库时，先确认选中了正确的 GitHub 账户，以及 Vercel 对该仓库有访问权限。
+3. 在部署配置页展开 **Environment Variables**（环境变量）。每一行分别填写一个名称和对应的值，不要把四项放在同一行：
 
 | 名称 | 值 | 说明 |
 | --- | --- | --- |
@@ -29,9 +31,11 @@ flowchart LR
 | `ENABLE_AI` | `true` | 开启分析；设为 `false` 可暂停 |
 | `ADMIN_SECRET` | 自己设置的独立管理员密钥 | 抓取、分析和检查配置时输入 |
 
+例如，选择 DeepSeek 时，`AI_PROVIDER` 填 `deepseek`，`AI_API_KEY` 填自己在 DeepSeek 平台生成的密钥。选择 OpenAI 时，将 `AI_PROVIDER` 填 `openai`，并在 `AI_API_KEY` 填自己的 OpenAI 密钥。不要把服务商名称或变量名称当作密钥值。
+
 模型默认分别为 `deepseek-flash` 和 `gpt-4o-mini`。高级用户可额外设置 `AI_MODEL`，但需自行确认模型支持 JSON 输出及相应接口。不要设置 `NEXT_PUBLIC_AI_API_KEY` 或 `NEXT_PUBLIC_ADMIN_SECRET`。
 
-确认变量应用于 **Production**，点击部署并等待完成。Preview 是独立环境：若要在预览站测试，需要单独配置 Preview 变量，且应使用独立密钥。修改环境变量后，需重新部署使新部署读取到更新值。
+4. 确认变量应用于 **Production**，点击 **Deploy** 并等待完成。成功后打开 Vercel 显示的正式网站地址。Preview 是独立环境：若要在预览站测试，需要单独配置 Preview 变量，且应使用独立密钥。修改环境变量后，需重新部署使新部署读取到更新值。
 
 ## 3. 首次使用
 
