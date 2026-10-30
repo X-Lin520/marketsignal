@@ -49,6 +49,176 @@ function load(file, mocks = {}, env = {}, logs = []) {
   return compile(path.resolve(file));
 }
 
+function sessionNews(index = 1) {
+  return {
+    id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    title: "Synthetic market news for session-only testing",
+    source: "Test",
+    publishedAt: new Date().toISOString(),
+    ingestedAt: new Date().toISOString(),
+    link: `https://example.com/news/${index}`,
+    contentSnippet: "Synthetic content.",
+  };
+}
+
+const responseMock = {
+  NextResponse: {
+    json: (data, init = {}) => ({
+      data,
+      status: init.status ?? 200,
+      headers: init.headers,
+    }),
+  },
+};
+
+test("临时抓取不调用 AI、不写库，重复抓取仍返回完整最新快照", async () => {
+  let modelCalls = 0;
+  const input = sessionNews();
+  const route = load("src/app/api/session/news/route.ts", {
+    "next/server": responseMock,
+    "@/lib/auth": { authorized: () => true },
+    "@/lib/rss/fetcher": {
+      fetchAllSources: async () => [
+        {
+          sourceName: "Test",
+          items: [{ ...input, publishedAt: new Date(input.publishedAt) }],
+        },
+      ],
+    },
+    "@/lib/ai/client": {
+      analyzeNewsItem: () => {
+        modelCalls++;
+      },
+    },
+    "@/lib/db/prisma": new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("Database must not be touched");
+        },
+      },
+    ),
+  });
+  const first = await route.POST({});
+  const second = await route.POST({});
+  assert.equal(first.status, 200);
+  assert.equal(first.headers["Cache-Control"], "no-store");
+  assert.equal(first.data.items.length, 1);
+  assert.equal(second.data.items.length, 1);
+  assert.notEqual(first.data.items[0].id, second.data.items[0].id);
+  assert.equal(first.data.items[0].sentiment, null);
+  assert.equal(first.data.items[0].summary, null);
+  assert.equal(modelCalls, 0);
+});
+
+test("临时抓取拒绝未授权，全部来源失败不伪装成功", async () => {
+  let calls = 0;
+  const mocks = {
+    "next/server": responseMock,
+    "@/lib/auth": { authorized: (request) => request.allowed },
+    "@/lib/rss/fetcher": {
+      fetchAllSources: async () => {
+        calls++;
+        return [{ sourceName: "Test", items: [], error: "Status code 503" }];
+      },
+    },
+  };
+  const route = load("src/app/api/session/news/route.ts", mocks);
+  assert.equal((await route.POST({ allowed: false })).status, 401);
+  assert.equal(calls, 0);
+  assert.equal((await route.POST({ allowed: true })).status, 503);
+});
+
+test("新快照按新闻时间排序去重，并清除任何旧分析字段", () => {
+  const { createSnapshot } = load("src/lib/session/news.ts");
+  const first = {
+    ...sessionNews(1),
+    publishedAt: new Date(),
+    sentiment: "Bullish",
+    summary: "Old analysis",
+  };
+  const newer = { ...sessionNews(2), publishedAt: new Date(Date.now() + 1000) };
+  const result = createSnapshot([
+    { sourceName: "Test", items: [first, newer, first] },
+  ]);
+  assert.equal(result.items.length, 2);
+  assert.equal(result.items[0].link, newer.link);
+  assert.equal(result.items[1].summary, null);
+  assert.equal(result.items[1].sentiment, null);
+});
+
+test("页面统计、筛选只使用当前快照，未分析条目不计为中性", () => {
+  const { sessionStats, filterSession } = load("src/lib/session/view.ts");
+  const items = [
+    { ...sessionNews(1), sentiment: null, impactSectors: [] },
+    { ...sessionNews(2), sentiment: "Bullish", impactSectors: ["Technology"] },
+  ];
+  assert.equal(sessionStats([]).totalNews, 0);
+  assert.equal(sessionStats(items).totalNews, 2);
+  assert.equal(sessionStats(items).neutralCount, 0);
+  assert.equal(
+    filterSession(
+      items,
+      new URLSearchParams("sentiment=Bullish&sector=Technology"),
+    ).length,
+    1,
+  );
+  assert.equal(
+    filterSession(items, new URLSearchParams("source=Other")).length,
+    0,
+  );
+});
+
+test("旧历史列表、详情、统计与重分析均返回停用，不连接数据库", async () => {
+  for (const file of [
+    "news/route.ts",
+    "news/[id]/route.ts",
+    "stats/route.ts",
+    "reanalyze/route.ts",
+  ]) {
+    const route = load(`src/app/api/${file}`, {
+      "next/server": responseMock,
+      "@/lib/db/prisma": new Proxy(
+        {},
+        {
+          get() {
+            throw new Error("Database must not be touched");
+          },
+        },
+      ),
+    });
+    assert.equal((await (route.GET ?? route.POST)()).status, 410);
+  }
+});
+
+test("已取消的批次不发起后续模型调用", async () => {
+  let calls = 0;
+  const controller = new AbortController();
+  const route = load(
+    "src/app/api/session/analyze/route.ts",
+    {
+      "next/server": responseMock,
+      "@/lib/auth": { authorized: () => true },
+      "@/lib/ai/client": {
+        analyzeNewsItem: async () => {
+          calls++;
+          controller.abort();
+          return validAnalysis;
+        },
+      },
+    },
+    { ENABLE_AI: "true", OPENAI_API_KEY: randomBytes(24).toString("hex") },
+  );
+  const result = await route.POST({
+    signal: controller.signal,
+    text: async () =>
+      JSON.stringify({ items: [sessionNews(1), sessionNews(2)] }),
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.data.succeeded, 1);
+  assert.equal(result.data.failed, 1);
+});
+
 test("RSS 单来源失败保留错误和其他来源新闻，不调用暂停来源", async () => {
   const calls = [];
   const sources = load("src/lib/rss/sources.ts");
@@ -227,7 +397,7 @@ test("相同批次的重复链接只保留一次", async () => {
   assert.equal(result.length, 1);
 });
 
-test("定时任务密钥与公开变量相同时，拒绝运行", async () => {
+test("旧定时任务入口已停用，即使密钥正确也不采集或分析", async () => {
   const key = randomBytes(24).toString("hex");
   const mocks = {
     "next/server": {
@@ -247,18 +417,15 @@ test("定时任务密钥与公开变量相同时，拒绝运行", async () => {
     NEXT_PUBLIC_CRON_SECRET: key,
   });
   const response = await route.GET({});
-  assert.equal(response.status, 503);
+  assert.equal(response.status, 410);
 });
 
-test("重新分析失败时保留历史结果，成功后才更新", async () => {
+test("临时分析部分失败只返回成功条目，不写数据库", async () => {
   const key = randomBytes(24).toString("hex");
-  const rows = [
-    { id: "one", title: "first" },
-    { id: "two", title: "second" },
-  ];
+  const rows = [sessionNews(1), sessionNews(2)];
   const writes = [];
   const route = load(
-    "src/app/api/reanalyze/route.ts",
+    "src/app/api/session/analyze/route.ts",
     {
       "next/server": {
         NextResponse: {
@@ -276,7 +443,7 @@ test("重新分析失败时保留历史结果，成功后才更新", async () =>
       },
       "@/lib/ai/client": {
         analyzeNewsItem: async (row) => {
-          if (row.id === "one") throw new Error("offline");
+          if (row.id === rows[0].id) throw new Error("offline");
           return {
             summary: "new",
             sentiment: "Bullish",
@@ -291,12 +458,14 @@ test("重新分析失败时保留历史结果，成功后才更新", async () =>
   );
   const response = await route.POST({
     key,
-    json: async () => ({ newsIds: ["one", "two"] }),
+    signal: new AbortController().signal,
+    text: async () => JSON.stringify({ items: rows }),
   });
   assert.equal(response.data.succeeded, 1);
   assert.equal(response.data.failed, 1);
-  assert.equal(writes.length, 1);
-  assert.equal(writes[0].where.id, "two");
+  assert.equal(writes.length, 0);
+  assert.equal(response.data.items[0].id, rows[1].id);
+  assert.equal(rows[0].summary, undefined);
   const denied = await route.POST({ key: "wrong" });
   assert.equal(denied.status, 401);
 });
@@ -308,10 +477,10 @@ const validAnalysis = {
   actionableAdvice: "Observe the market.",
 };
 
-test("批量分析拒绝旧游标、超额和重复条目，避免意外遍历全库", async () => {
+test("临时批量分析拒绝旧 ID、空批次、超额和重复条目", async () => {
   let touched = false;
   const route = load(
-    "src/app/api/reanalyze/route.ts",
+    "src/app/api/session/analyze/route.ts",
     {
       "next/server": {
         NextResponse: {
@@ -338,8 +507,15 @@ test("批量分析拒绝旧游标、超额和重复条目，避免意外遍历�
     { newsIds: [] },
     { newsIds: ["a", "a"] },
     { newsIds: Array.from({ length: 11 }, (_, i) => String(i)) },
+    { items: [] },
+    { items: [sessionNews(1), sessionNews(1)] },
+    { items: Array.from({ length: 11 }, (_, i) => sessionNews(i + 1)) },
+    { items: [{ ...sessionNews(1), link: "javascript:alert(1)" }] },
+    { items: [{ ...sessionNews(1), title: "x".repeat(32_769) }] },
   ]) {
-    const response = await route.POST({ json: async () => body });
+    const response = await route.POST({
+      text: async () => JSON.stringify(body),
+    });
     assert.equal(response.status, 400);
   }
   assert.equal(touched, false);
@@ -560,7 +736,7 @@ test("单条解析失败只调用一次模型、保留待分析并记录具体�
   assert.equal(JSON.stringify(logs).includes(marker), false);
 });
 
-test("单条分析保存失败明确归类且不泄漏数据库错误", async () => {
+test("旧数据库单条分析入口停用，不查询或泄漏历史数据", async () => {
   const logs = [];
   const diagnostics = load("src/lib/ai/diagnostics.ts", {}, {}, logs);
   const key = randomBytes(24).toString("hex");
@@ -598,8 +774,7 @@ test("单条分析保存失败明确归类且不泄漏数据库错误", async ()
     key,
     json: async () => ({ newsId: sampleNews.id }),
   });
-  assert.equal(response.status, 500);
-  assert.match(response.data.error, /保存失败/);
-  assert.equal(JSON.parse(logs[0].args[1]).code, "SAVE_FAILED");
+  assert.equal(response.status, 410);
+  assert.equal(logs.length, 0);
   assert.equal(JSON.stringify({ logs, response }).includes(marker), false);
 });

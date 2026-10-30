@@ -34,21 +34,25 @@ export interface AiAnalysis {
 export async function analyzeNewsItem(
   item: NormalizedItem,
   context: AnalysisContext = {},
+  signal?: AbortSignal,
 ): Promise<AiAnalysis> {
   const response = await (async () => {
     try {
-      return await getClient().chat.completions.create({
-        model: "deepseek-flash",
-        // 短新闻只生成最终结果，避免思考过程耗尽正文预算。
-        reasoning_effort: "none",
-        response_format: { type: "json_object" },
-        max_tokens: 1024,
-        temperature: 0.1,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildUserMessage(item) },
-        ],
-      });
+      return await getClient().chat.completions.create(
+        {
+          model: "deepseek-flash",
+          // 短新闻只生成最终结果，避免思考过程耗尽正文预算。
+          reasoning_effort: "none",
+          response_format: { type: "json_object" },
+          max_tokens: 1024,
+          temperature: 0.1,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: buildUserMessage(item) },
+          ],
+        },
+        { signal, maxRetries: 0, timeout: 45_000 },
+      );
     } catch (error) {
       const failure = providerError(error);
       logAiDiagnostic(failure.diagnostic, context);

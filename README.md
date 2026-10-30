@@ -1,64 +1,62 @@
 # MarketSignal
 
-财经新闻监控仪表盘：从 RSS 采集新闻，以 DeepSeek 分析摘要、情绪和受影响板块，并提供筛选与原文链接。AI 输出仅供参考，不构成投资建议。
+按需抓取财经新闻，以 DeepSeek 生成摘要、情绪和影响板块。新闻与分析结果仅在当前页面内存中保留，完整刷新、关闭页面或重新抓取后清空。AI 输出仅供参考，不构成投资建议。
 
-## 现状和前提
+## 当前行为
 
-- Next.js 16、React 19、Prisma 6 和 **PostgreSQL**；当前 schema 不支持 SQLite。
-- AI 使用 DeepSeek `deepseek-flash`。为兼容现有部署，DeepSeek API key 仍存于服务端 `OPENAI_API_KEY` 变量。关闭或失败的分析保持待处理，不计作中性。
-- `vercel.json` 当前配置为 **每天 UTC 00:00**，并非每 5 分钟。实际频率需结合 Vercel 套餐限制和 API 成本确定。
-- 每次采集最多自动分析 10 条待处理新闻，剩余条目保留到后续任务；手动重分析仍需单独操作并可能产生额外费用。
-- 仓库保留的旧迁移是 SQLite 格式，与当前 PostgreSQL schema 不一致。生产库应先备份，核对现有 schema 和迁移历史，制定并演练 PostgreSQL 基线迁移及回滚；不要直接对生产库执行 `db push` 或旧迁移。
+| 操作 | 结果 | AI 调用 |
+| --- | --- | --- |
+| 打开或刷新页面 | 空列表，统计归零 | 无 |
+| 抓取最新新闻 | 从当前启用 RSS 生成最新快照，最多 200 条，替换本页旧结果 | 无 |
+| 滚动、筛选、切换语言 | 在当前快照中每批展示 10 条或筛选 | 无 |
+| 分析下一批 | 仅处理已加载且本次尚未处理的最多 10 条新闻，完成即停止 | 有 |
+| 只分析这条 | 仅处理详情中的一条新闻 | 有 |
+| 顶部清空按钮 | 清空当前页面新闻与分析 | 无 |
 
-## 本地运行
+- 前端不把新闻、分析或管理员密钥写入 localStorage、sessionStorage 或 cookie。语言与主题偏好仍可持久保存。
+- 新的请求链路不读取或写入数据库；抓取、分析响应均使用 `Cache-Control: no-store`。不同页面的新闻相互独立。
+- 无后台定时采集：`vercel.json` 不再配置 Cron；旧新闻、统计、入库和数据库分析接口统一返回 410，旧页面也不能继续写库或调用模型。
+- 重新抓取失败会保留本页现有快照，并提示错误；成功后替换，不跨会话积累。部分来源失败仍显示成功来源的新闻与错误。
+- 刷新会丢失已付费分析结果，重新分析需要再次付费。单条失败不自动重试；离开页面后已发出的模型调用可能仍计费。
 
-1. 准备 Node.js 20.9 或以上版本和独立的 PostgreSQL 测试数据库。
-2. 安装依赖：`npm ci`。
-3. 从 `.env.example` 复制到 `.env.local`，设置 `DATABASE_URL`、`DIRECT_URL`。如需 AI，设置 `OPENAI_API_KEY` 为 DeepSeek API key 并设置 `ENABLE_AI=true`；否则设置 `ENABLE_AI=false`。生成独立随机的 `CRON_SECRET` 和 `ADMIN_SECRET`，不要添加到代码或提交到 Git。
-4. **仅对新的、可丢弃的本地测试库**：运行 `npx prisma db push`、`npx prisma generate`；可选运行 `npm run db:seed` 加入模拟新闻。示例内容和链接并非实时新闻。
-5. 运行 `npm run dev`，打开 `http://localhost:3000`。
+## 本地运行与配置
 
-## 操作与保护
+1. Node.js 20.9 或以上，执行 `npm ci`。
+2. 从 `.env.example` 复制为 `.env.local`，配置独立的服务端 `ADMIN_SECRET`。
+3. 抓取无需模型密钥；需要分析时设置 `ENABLE_AI=true`、`OPENAI_API_KEY` 为 DeepSeek key。变量名为兼容既有部署而保留，接口使用 `https://api.deepseek.com`、模型 `deepseek-flash`。
+4. 执行 `npm run dev`，打开 `http://localhost:3000`。
 
-- 统计和新闻列表是只读接口。筛选更改时会刷新列表，失败会显示错误提示。
-- Vercel Cron 对 `/api/cron/ingest` 发起 GET，并使用 `CRON_SECRET`；手动抓取使用 POST 和 `ADMIN_SECRET`。
-- 手动抓取及重新分析在页面中输入管理员密钥，密钥仅保存在当前操作的内存中，不放入 `NEXT_PUBLIC_` 变量或浏览器持久存储。请只在可信设备和 HTTPS 环境使用。
-- 每次点击重新分析，只处理已加载新闻中本次浏览会话尚未处理的下一批，最多 10 条，完成后停止。向下滚动每次加载 10 条新闻，加载不调用 AI；再次点击才分析下一批。失败条目保留原结果，整批处理过的条目不在本次会话自动重复；刷新页面后会话进度重置。
-- `POST /api/reanalyze` 必须提交 1–10 个不同的 `newsIds`，只处理这些记录；旧版仅带 cursor 的请求会被拒绝，避免旧页面继续遍历全库。分析仍会产生 API 费用。
-- 旧的 `/api/reset-analysis` 已停用。上线前仍应配置独立的访问控制、请求频率限制和监控；共享密钥不是完整的多用户登录系统。
-- 旧版本写入的占位“中性”结果不会自动修复。生产数据需先备份、识别占位记录，再决定是否重分析。
+当前页面流程无需 PostgreSQL。仓库保留 Prisma schema、历史迁移与旧管线代码作为维护资料，但应用入口已不再调用它们；不要运行旧迁移、seed 或数据库分析脚本来启动临时模式。
 
-## RSS 来源与独立检查
+`ADMIN_SECRET` 仅用于鉴权，不能放进 `NEXT_PUBLIC_` 变量。页面每次操作输入密钥，提交后清空输入，不保存到浏览器。共享密钥适合个人使用；对外多用户服务仍应另行配置账户权限和请求频率限制。
 
-- 当前启用 CNBC、MarketWatch、Bloomberg、Yahoo Finance、Investing.com，共 5 个来源。
-- Yahoo Finance 原综合新闻地址失效，改用其官方 `^GSPC`（标普 500）相关新闻 RSS。它不是全部 Yahoo 财经新闻，也不保证只包含指数本身的新闻；来源名称仍为 Yahoo Finance。
-- Reuters Agency 旧 RSS 返回 404，已暂停抓取。尚未确认可用的官方免费替代入口；可用的授权接入需另行配置。暂停不删除已有 Reuters 新闻，也不把其他媒体标成 Reuters。
-- 运行 `npx tsx scripts/check-feeds.ts`，独立验证启用来源能否解析为包含标题和链接的新闻。此命令不使用数据库、不调用 AI；任一启用来源失败即返回非零退出码，同时打印暂停来源及原因。
-- 不同网络或地区可能返回 403、超时等结果；本地检查不能替代 Vercel 运行环境验证。暂停来源不会计为抓取成功。
+## API
 
-## AI 失败排查
+| 接口 | 鉴权和行为 |
+| --- | --- |
+| `POST /api/session/news` | `Authorization: Bearer <ADMIN_SECRET>`；只抓取 RSS，返回 `items/fetchedAt/errors`，不调用 AI |
+| `POST /api/session/analyze` | 同上；提交 `{items: [...]}`，包含 1–10 条不同的完整新闻输入；返回成功 `items` 和逐条 `errors`，不写库 |
+| 旧 `/api/news`、`/api/news/:id`、`/api/stats`、`/api/analyze`、`/api/reanalyze`、`/api/cron/ingest` | 已停用，返回 410；客户端需刷新后使用临时流程 |
 
-在 Vercel Runtime Logs 中搜索 `[AI] Analysis diagnostic`。单条、采集和重分析分别标记 `operation=analyze/ingest/reanalyze`；用 `newsId` 关联同一新闻的模型输出与保存步骤。
+分析输入含 `id`（UUID）、`title`、`link`（HTTP(S)）、`source`、`publishedAt`、`contentSnippet`、`ingestedAt`。正文限 32 KiB，每批最多 10 条；旧版只传 `newsIds` 或 cursor 的请求被拒绝。服务器为整批设置 45 秒截止时间，已取消或超时后不再启动后续条目。
 
-| code                    | 含义与核验字段                                                                         |
-| ----------------------- | -------------------------------------------------------------------------------------- |
-| `OUTPUT_TRUNCATED`      | 生成达到 Token 上限；核对 `finishReason=length`、`completionTokens`、`reasoningTokens` |
-| `OUTPUT_EMPTY`          | 模型返回空正文                                                                         |
-| `OUTPUT_INVALID_JSON`   | 经过既有恢复尝试后仍无法解析 JSON                                                      |
-| `OUTPUT_SCHEMA_INVALID` | 字段不合格；查看 `issues.field/code/limit`、`summaryLength`                            |
-| `SAVE_FAILED`           | 模型输出已通过校验，但数据库保存失败                                                   |
-| `PROVIDER_*`            | 认证、余额、限流、网络、超时或供应商服务错误                                           |
+## RSS 来源
 
-日志只记录允许的元数据，不记录模型正文、原始错误消息、密钥或完整响应。`model_output_accepted` 仅表示输出通过校验，不能单独证明数据库已保存成功。缺失的结束原因标为 `missing`，不能按正常结束推断。
+- 启用 CNBC、MarketWatch、Bloomberg、Yahoo Finance、Investing.com，共 5 个来源。
+- Yahoo 使用官方 `^GSPC`（标普 500）相关新闻 RSS，不代表全部 Yahoo 财经新闻。
+- Reuters Agency 旧 RSS 返回 404，已暂停，尚未确认可用的官方免费替代入口；不把其他媒体标成 Reuters。
+- `npx tsx scripts/check-feeds.ts` 只检查 RSS，不写库、不调用 AI；任一启用来源失败即返回非零退出码。不同网络和地区可能返回 403 或超时，本地结果不能替代 Vercel 实测。
 
-排查时优先使用新闻详情中的单条分析，或经过 `ADMIN_SECRET` 鉴权的 `POST /api/analyze`，一次只提交一个 `newsId`。解析或字段校验失败不会自动重试模型；页面会给出分类提示，原结果保留。不要使用全部重分析来定位单条故障。
+## 分析失败与检查
 
-短新闻分析使用非思考模式（`reasoning_effort=none`）和 JSON Output，生成预算上限 1024 Tokens。提示词要求摘要 10–500 字符、板块最多 3 个，与校验规则一致。模型仍可能违反约束；不合格或截断的输出保留失败状态，不会自动重复收费调用。真实调用仍会产生供应商费用。
+Vercel Runtime Logs 中搜索 `[AI] Analysis diagnostic`。日志只记录白名单元数据，包括结束原因、Token 数和字段上限，不记录模型正文、原始错误或密钥。`OUTPUT_ACCEPTED` 表示输出通过校验；当前结果返回给页面，不会写入数据库。
 
-## 检查与部署
+模型使用非思考模式（`reasoning_effort=none`）、JSON Output、1024 Tokens 上限；摘要 10–500 字符，板块 1–3 个。截断、损坏 JSON 和字段不合格分别提示，不自动重复收费请求。
 
-执行 `npx tsc --noEmit`、`npm run lint` 和 `npm run build`，并使用独立数据库验证采集、分析、筛选、错误处理和分页。部署前确认环境变量、数据库备份和恢复流程、管理员密钥以及定时任务是否符合套餐限制。部署后查看运行日志，并核对实际最新采集时间；构建成功不能证明数据链路正常。
+执行 `npm test`、`npx tsc --noEmit`、`npm run lint` 和 `npm run build`。浏览器还需验证：初始为空、抓取不分析、10 条分页、筛选不丢失本页快照、刷新归零、失败保留现有结果、未授权请求被拒绝。当前页面不依赖数据库，但 RSS 与模型仍需网络。
 
-生产构建脚本只生成 Prisma Client 并构建应用，不会自动修改数据库 schema。部署前仍须完成数据库迁移方案与验证。
+## 清理旧数据库记录
 
-发布前请确认上述配置、数据保护和验证步骤均已完成。
+停止使用数据库不会自动删除原先的历史记录。应在新版本生产发布成功后，确认目标 Supabase 项目及表，在用户明确确认清理后单独运行 `scripts/purge-historical-news.sql`；它永久删除 `public."NewsItem"` 内的全部新闻与分析，保留表结构，不修改账户或其他表。
+
+**刷新页面、预览构建和部署脚本均不会执行这个删除文件。** 清理执行与结果需单独记录；历史记录清理前不要宣称数据库已清空。若回滚到旧持久化版本，已经删除的数据不会恢复。
