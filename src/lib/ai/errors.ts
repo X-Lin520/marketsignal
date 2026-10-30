@@ -42,17 +42,17 @@ export function safeAiError(error: unknown): string {
     case "CONFIGURATION_MISSING":
       return "AI 尚未配置，请检查服务配置。";
     case "PROVIDER_AUTH":
-      return "DeepSeek API 密钥认证失败，请检查配置。";
+      return "AI 服务密钥认证失败，请检查配置。";
     case "PROVIDER_BALANCE":
-      return "DeepSeek 账户余额不足，请检查余额。";
+      return "AI 服务账户余额不足，请检查余额。";
     case "PROVIDER_RATE_LIMIT":
-      return "DeepSeek 请求过于频繁，请稍后重试。";
+      return "AI 服务请求过于频繁，请稍后重试。";
     case "PROVIDER_UNAVAILABLE":
-      return "DeepSeek 服务暂时不可用，请稍后重试。";
+      return "AI 服务暂时不可用，请稍后重试。";
     case "PROVIDER_CONNECTION":
-      return "连接 DeepSeek 失败，请稍后重试。";
+      return "连接 AI 服务失败，请稍后重试。";
     case "PROVIDER_TIMEOUT":
-      return "DeepSeek 请求超时，请稍后重试。";
+      return "AI 服务请求超时，请稍后重试。";
     default:
       return "AI 分析失败，请检查服务状态及配置后重试。";
   }

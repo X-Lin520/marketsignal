@@ -61,6 +61,95 @@ function sessionNews(index = 1) {
   };
 }
 
+test("配置检查需管理员鉴权，检查本身不发起模型请求", async () => {
+  let calls = 0;
+  const route = load(
+    "src/app/api/session/ai-status/route.ts",
+    {
+      "next/server": {
+        NextResponse: {
+          json: (data, init = {}) => ({ data, status: init.status ?? 200 }),
+        },
+      },
+      "@/lib/auth": { authorized: (request) => request.allowed },
+      "@/lib/ai/client": {
+        testAiConnection: async () => {
+          calls++;
+        },
+      },
+    },
+    { ENABLE_AI: "true", OPENAI_API_KEY: "example-test-key" },
+  );
+  assert.equal((await route.POST({ allowed: false })).status, 401);
+  const status = await route.POST({
+    allowed: true,
+    json: async () => ({ action: "status" }),
+  });
+  assert.equal(status.data.configured, true);
+  assert.equal(status.data.provider, "deepseek");
+  assert.equal(calls, 0);
+  const tested = await route.POST({
+    allowed: true,
+    json: async () => ({ action: "test" }),
+  });
+  assert.equal(tested.data.tested, true);
+  assert.equal(calls, 1);
+  assert.equal(JSON.stringify(tested).includes("example-test-key"), false);
+});
+
+test("OpenAI 连接测试使用 OpenAI 模型并且不发送 DeepSeek 专有参数", async () => {
+  let options, request;
+  const client = load(
+    "src/lib/ai/client.ts",
+    {
+      openai: {
+        __esModule: true,
+        default: class {
+          constructor(value) {
+            options = value;
+            this.chat = {
+              completions: {
+                create: async (data) => {
+                  request = data;
+                  return { choices: [{ message: { content: "OK" } }] };
+                },
+              },
+            };
+          }
+        },
+      },
+    },
+    { AI_PROVIDER: "openai", AI_API_KEY: "example-test-key" },
+  );
+  await client.testAiConnection();
+  assert.equal(options.baseURL, undefined);
+  assert.equal(request.model, "gpt-4o-mini");
+  assert.equal(Object.hasOwn(request, "reasoning_effort"), false);
+});
+
+test("服务商选择保留旧 DeepSeek 密钥且不会把旧密钥发送给 OpenAI", () => {
+  const { aiConfig } = load("src/lib/ai/config.ts");
+  const legacy = aiConfig({ OPENAI_API_KEY: "legacy-test-key" });
+  assert.equal(legacy.provider, "deepseek");
+  assert.equal(legacy.key, "legacy-test-key");
+  assert.equal(
+    aiConfig({ AI_PROVIDER: "openai", OPENAI_API_KEY: "legacy-test-key" })
+      .configured,
+    false,
+  );
+  const selected = aiConfig({
+    AI_PROVIDER: "openai",
+    AI_API_KEY: "test-only-key",
+  });
+  assert.equal(selected.provider, "openai");
+  assert.equal(selected.model, "gpt-4o-mini");
+  assert.equal(
+    aiConfig({ AI_PROVIDER: "invalid", AI_API_KEY: "test-only-key" })
+      .configured,
+    false,
+  );
+});
+
 const responseMock = {
   NextResponse: {
     json: (data, init = {}) => ({

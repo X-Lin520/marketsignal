@@ -1,6 +1,8 @@
 # MarketSignal
 
-按需抓取财经新闻，以 DeepSeek 生成摘要、情绪和影响板块。新闻与分析结果仅在当前页面内存中保留，完整刷新、关闭页面或重新抓取后清空。AI 输出仅供参考，不构成投资建议。
+首次部署请阅读 [新手部署指南](DEPLOY_GUIDE.md)。
+
+按需抓取财经新闻，选择 DeepSeek 或 OpenAI 生成摘要、情绪和影响板块。新闻与分析结果仅在当前页面内存中保留，完整刷新、关闭页面或重新抓取后清空。AI 输出仅供参考，不构成投资建议。
 
 ## 当前行为
 
@@ -23,7 +25,7 @@
 
 1. Node.js 20.9 或以上，执行 `npm ci`。
 2. 从 `.env.example` 复制为 `.env.local`，配置独立的服务端 `ADMIN_SECRET`。
-3. 抓取无需模型密钥；需要分析时设置 `ENABLE_AI=true`、`OPENAI_API_KEY` 为 DeepSeek key。变量名为兼容既有部署而保留，接口使用 `https://api.deepseek.com`、模型 `deepseek-flash`。
+3. 抓取无需模型密钥；需要分析时设置 `ENABLE_AI=true`、`AI_PROVIDER` 为 `deepseek` 或 `openai`，并将该服务商密钥填入 `AI_API_KEY`。旧部署的 `OPENAI_API_KEY` 仅用于兼容 DeepSeek，不能被 OpenAI 服务商读取。
 4. 执行 `npm run dev`，打开 `http://localhost:3000`。
 
 当前页面流程无需 PostgreSQL。仓库保留 Prisma schema、历史迁移与旧管线代码作为维护资料，但应用入口已不再调用它们；不要运行旧迁移、seed 或数据库分析脚本来启动临时模式。
@@ -51,7 +53,7 @@
 
 Vercel Runtime Logs 中搜索 `[AI] Analysis diagnostic`。日志只记录白名单元数据，包括结束原因、Token 数和字段上限，不记录模型正文、原始错误或密钥。`OUTPUT_ACCEPTED` 表示输出通过校验；当前结果返回给页面，不会写入数据库。
 
-模型使用非思考模式（`reasoning_effort=none`）、JSON Output、1024 Tokens 上限；摘要 10–500 字符，板块 1–3 个。截断、损坏 JSON 和字段不合格分别提示，不自动重复收费请求。
+DeepSeek 使用非思考模式（`reasoning_effort=none`）；两个服务商均使用 JSON Output、1024 Tokens 上限。摘要 10–500 字符，板块 1–3 个。截断、损坏 JSON 和字段不合格分别提示，不自动重复收费请求。
 
 执行 `npm test`、`npx tsc --noEmit`、`npm run lint` 和 `npm run build`。浏览器还需验证：初始为空、抓取不分析、10 条分页、筛选不丢失本页快照、刷新归零、失败保留现有结果、未授权请求被拒绝。当前页面不依赖数据库，但 RSS 与模型仍需网络。
 
