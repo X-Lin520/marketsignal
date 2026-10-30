@@ -41,11 +41,71 @@ function load(file, mocks = {}, env = {}, logs = []) {
       ),
       setTimeout,
       Buffer,
+      Error,
+      AbortSignal,
     });
     return testModule.exports;
   }
   return compile(path.resolve(file));
 }
+
+test("RSS 单来源失败保留错误和其他来源新闻，不调用暂停来源", async () => {
+  const calls = [];
+  const sources = load("src/lib/rss/sources.ts");
+  const fetcher = load("src/lib/rss/fetcher.ts", {
+    "rss-parser": class {
+      async parseURL(url) {
+        calls.push(url);
+        if (url.includes("yahoo.com")) throw new Error("Status code 503");
+        return {
+          items: [
+            { title: "   ", link: "https://example.com/empty" },
+            { title: " Market news ", link: " https://example.com/news " },
+          ],
+        };
+      }
+    },
+  });
+  const results = await fetcher.fetchAllSources();
+  assert.equal(calls.length, sources.RSS_SOURCES.length);
+  assert.equal(
+    calls.some((url) => url.includes("reuters")),
+    false,
+  );
+  assert.equal(
+    sources.PAUSED_RSS_SOURCES.some((source) => source.name === "Reuters"),
+    true,
+  );
+  const failed = results.find(
+    (result) => result.sourceName === "Yahoo Finance",
+  );
+  assert.equal(failed.error, "Status code 503");
+  assert.equal(failed.items.length, 0);
+  for (const result of results.filter((result) => !result.error)) {
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0].title, "Market news");
+    assert.equal(result.items[0].link, "https://example.com/news");
+    assert.equal(result.items[0].source, result.sourceName);
+  }
+});
+
+test("RSS 空 feed 或缺失有效标题链接都不能误报成功", async () => {
+  for (const items of [[], [{ title: "News" }], [{ title: " ", link: " " }]]) {
+    const fetcher = load("src/lib/rss/fetcher.ts", {
+      "rss-parser": class {
+        async parseURL() {
+          return { items };
+        }
+      },
+    });
+    const results = await fetcher.fetchAllSources();
+    assert.equal(results.length > 0, true);
+    assert.equal(
+      results.every((result) => result.error && result.items.length === 0),
+      true,
+    );
+  }
+});
 
 test("损坏的 AI 结果不会被当作中性分析", () => {
   const parser = load("src/lib/ai/parser.ts", {});

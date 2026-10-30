@@ -28,6 +28,14 @@
 - 旧的 `/api/reset-analysis` 已停用。上线前仍应配置独立的访问控制、请求频率限制和监控；共享密钥不是完整的多用户登录系统。
 - 旧版本写入的占位“中性”结果不会自动修复。生产数据需先备份、识别占位记录，再决定是否重分析。
 
+## RSS 来源与独立检查
+
+- 当前启用 CNBC、MarketWatch、Bloomberg、Yahoo Finance、Investing.com，共 5 个来源。
+- Yahoo Finance 原综合新闻地址失效，改用其官方 `^GSPC`（标普 500）相关新闻 RSS。它不是全部 Yahoo 财经新闻，也不保证只包含指数本身的新闻；来源名称仍为 Yahoo Finance。
+- Reuters Agency 旧 RSS 返回 404，已暂停抓取。尚未确认可用的官方免费替代入口；可用的授权接入需另行配置。暂停不删除已有 Reuters 新闻，也不把其他媒体标成 Reuters。
+- 运行 `npx tsx scripts/check-feeds.ts`，独立验证启用来源能否解析为包含标题和链接的新闻。此命令不使用数据库、不调用 AI；任一启用来源失败即返回非零退出码，同时打印暂停来源及原因。
+- 不同网络或地区可能返回 403、超时等结果；本地检查不能替代 Vercel 运行环境验证。暂停来源不会计为抓取成功。
+
 ## AI 失败排查
 
 在 Vercel Runtime Logs 中搜索 `[AI] Analysis diagnostic`。单条、采集和重分析分别标记 `operation=analyze/ingest/reanalyze`；用 `newsId` 关联同一新闻的模型输出与保存步骤。
