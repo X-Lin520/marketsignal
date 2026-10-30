@@ -1,7 +1,10 @@
 import type { RawFeedItem, NormalizedItem } from "./types";
 
 function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+  return html
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function extractSnippet(item: RawFeedItem): string | null {
@@ -26,7 +29,7 @@ export function normalizeItems(
   sourceName: string,
 ): NormalizedItem[] {
   return items
-    .filter((item) => item.title && item.link)
+    .filter((item) => item.title?.trim() && item.link?.trim())
     .map((item) => ({
       title: item.title!.trim(),
       link: item.link!.trim(),
