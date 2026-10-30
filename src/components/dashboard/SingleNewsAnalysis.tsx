@@ -3,14 +3,20 @@
 import { useRef, useState } from "react";
 import type { NewsItemData } from "@/types";
 import { useLanguage } from "@/providers/language-provider";
+import { toAnalysisInput } from "@/lib/session/view";
 
 export function SingleNewsAnalysis({
-  newsId,
+  item,
   onAnalyzed,
+  disabled = false,
+  onBusyChange,
 }: {
-  newsId: string;
+  item: NewsItemData;
   onAnalyzed: (item: NewsItemData) => void;
+  disabled?: boolean;
+  onBusyChange?: (busy: boolean) => void;
 }) {
+  const newsId = item.id;
   const { language } = useLanguage();
   const zh = language === "zh";
   const [open, setOpen] = useState(false);
@@ -30,6 +36,7 @@ export function SingleNewsAnalysis({
       {!open && (
         <button
           type="button"
+          disabled={disabled}
           className="rounded border px-3 py-2 text-sm"
           onClick={() => {
             setOpen(true);
@@ -45,21 +52,22 @@ export function SingleNewsAnalysis({
           className="space-y-2"
           onSubmit={async (event) => {
             event.preventDefault();
-            if (lock.current) return;
+            if (lock.current || disabled) return;
             lock.current = true;
+            onBusyChange?.(true);
             setBusy(true);
             setError(null);
             const key = secret;
             setSecret("");
             try {
-              // 单次请求只发送一个新闻 ID，不启动批量处理或自动重试。
-              const response = await fetch("/api/analyze", {
+              // 发送当前新闻内容，只返回临时结果，不查询或保存数据库记录。
+              const response = await fetch("/api/session/analyze", {
                 method: "POST",
                 headers: {
                   Authorization: `Bearer ${key}`,
                   "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ newsId }),
+                body: JSON.stringify({ items: [toAnalysisInput(item)] }),
               });
               const result = await response.json();
               if (!response.ok)
@@ -69,17 +77,20 @@ export function SingleNewsAnalysis({
                       ? "管理员密钥不正确，请检查 ADMIN_SECRET。"
                       : "Incorrect administrator key."
                     : result.error ||
+                        result.errors?.[0]?.error ||
                         (zh
                           ? "本条分析失败，请稍后重试。"
                           : "Analysis failed."),
                 );
-              if (!result.item || result.item.id !== newsId)
+              const updated = result.items?.[0];
+              if (!updated || updated.id !== newsId)
                 throw new Error(
-                  zh
-                    ? "返回结果不完整，请刷新检查。"
-                    : "Invalid response. Please refresh.",
+                  result.errors?.[0]?.error ||
+                    (zh
+                      ? "返回结果不完整，请刷新检查。"
+                      : "Invalid response. Please refresh."),
                 );
-              onAnalyzed(result.item);
+              onAnalyzed(updated);
               setDone(true);
               setOpen(false);
             } catch (failure) {
@@ -92,6 +103,7 @@ export function SingleNewsAnalysis({
               );
             } finally {
               lock.current = false;
+              onBusyChange?.(false);
               setBusy(false);
             }
           }}
@@ -106,7 +118,7 @@ export function SingleNewsAnalysis({
             type="password"
             autoComplete="off"
             required
-            disabled={busy}
+            disabled={busy || disabled}
             value={secret}
             onChange={(event) => setSecret(event.target.value)}
             className="w-full rounded border bg-background p-2"
@@ -119,7 +131,7 @@ export function SingleNewsAnalysis({
           <div className="flex gap-2">
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || disabled}
               className="rounded border px-3 py-2 text-sm disabled:opacity-50"
             >
               {busy
@@ -153,8 +165,8 @@ export function SingleNewsAnalysis({
       {done && (
         <p role="status" className="text-sm text-green-500">
           {zh
-            ? "这条新闻已分析并保存。"
-            : "This article has been analyzed and saved."}
+            ? "这条新闻已分析，结果仅在当前页面保留。"
+            : "Analyzed. The result stays in this page only."}
         </p>
       )}
     </section>

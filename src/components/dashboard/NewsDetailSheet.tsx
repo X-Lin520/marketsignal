@@ -32,6 +32,8 @@ interface NewsDetailSheetProps {
   isOpen: boolean;
   onClose: () => void;
   onAnalyzed: (item: NewsItemData) => void;
+  analysisDisabled?: boolean;
+  onAnalysisBusyChange?: (busy: boolean) => void;
 }
 
 const sentimentIcons = {
@@ -52,6 +54,8 @@ export function NewsDetailSheet({
   isOpen,
   onClose,
   onAnalyzed,
+  analysisDisabled,
+  onAnalysisBusyChange,
 }: NewsDetailSheetProps) {
   const { t, language } = useLanguage();
 
@@ -106,8 +110,10 @@ export function NewsDetailSheet({
           <div className="space-y-4 px-6 py-5">
             <SingleNewsAnalysis
               key={item.id}
-              newsId={item.id}
+              item={item}
               onAnalyzed={onAnalyzed}
+              disabled={analysisDisabled}
+              onBusyChange={onAnalysisBusyChange}
             />
             {/* Sentiment Banner */}
             {item.sentiment ? (

@@ -22,7 +22,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "MarketSignal — AI-Powered Market Intelligence",
   description:
-    "24/7 automated financial news monitoring with AI-driven sentiment analysis, summarization, and actionable investment insights.",
+    "Fetch financial news on demand and analyze it with AI. News and analysis are temporary and clear when the page reloads.",
 };
 
 export default async function RootLayout({

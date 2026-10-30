@@ -2,208 +2,223 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import { DashboardHeader } from "./DashboardHeader";
 import { NewsTimeline } from "./NewsTimeline";
-import type { NewsItemData, PaginatedResponse } from "@/types";
 import { useLanguage } from "@/providers/language-provider";
+import {
+  filterSession,
+  sessionStats,
+  toAnalysisInput,
+} from "@/lib/session/view";
+import type { NewsItemData } from "@/types";
 
 const NewsFilter = dynamic(
   () => import("./NewsFilter").then((m) => ({ default: m.NewsFilter })),
   { ssr: false },
 );
 
-const POLL_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
-
-interface DashboardStats {
-  totalNews: number;
-  bullishCount: number;
-  bearishCount: number;
-  neutralCount: number;
-  lastIngestedAt: string | null;
-}
-
-interface DashboardClientProps {
-  initialData: PaginatedResponse<NewsItemData>;
-  stats: DashboardStats;
-  sources: string[];
-}
-
-export function DashboardClient({
-  initialData,
-  stats: initialStats,
-  sources,
-}: DashboardClientProps) {
-  const [stats, setStats] = useState<DashboardStats>(initialStats);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-  const [isRefreshing, setIsRefreshing] = useState(false);
+export function DashboardClient() {
+  const [items, setItems] = useState<NewsItemData[]>([]);
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState(() => new Date());
   const [isFetching, setIsFetching] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
-  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [singleBusy, setSingleBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<
-    "fetch" | "reanalyze" | null
+    "fetch" | "analyze" | null
   >(null);
   const [adminKey, setAdminKey] = useState("");
-  const [visibleIds, setVisibleIds] = useState<string[]>(
-    initialData.items.slice(0, 10).map((item) => item.id),
-  );
   const [processedIds, setProcessedIds] = useState<string[]>([]);
-  const analysisLock = useRef(false);
-  const onItemsChange = useCallback(
-    (items: NewsItemData[]) => setVisibleIds(items.map((item) => item.id)),
-    [],
-  );
+  const [page, setPage] = useState({ query: "", limit: 10 });
+  const lock = useRef(false);
+  const generation = useRef(0);
+  const controller = useRef<AbortController | null>(null);
   const { language } = useLanguage();
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const refreshData = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      const res = await fetch("/api/stats");
-      if (!res.ok) throw new Error(`统计数据刷新失败 (${res.status})`);
-      const fresh = (await res.json()) as DashboardStats;
-      setStats(fresh);
-      setRefreshVersion((value) => value + 1);
-      setActionError(null);
-      setLastRefresh(new Date());
-    } catch (err) {
-      console.error("Auto-refresh failed:", err);
-      setActionError(err instanceof Error ? err.message : "刷新失败");
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  const fetchNews = useCallback(
-    async (secret: string) => {
-      setIsFetching(true);
-      setActionError(null);
-      try {
-        const res = await fetch("/api/cron/ingest", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${secret}` },
-        });
-        if (!res.ok)
-          throw new Error(
-            `抓取失败 (${res.status})，请检查管理员权限与服务配置。`,
-          );
-        if (res.ok) {
-          const result = await res.json();
-          if (result.errors?.length)
-            setActionError(`部分任务未完成：${result.errors.join("；")}`);
-          console.log("Ingest result:", result);
-          // Refresh stats after ingest
-          await refreshData();
-          if (result.errors?.length)
-            setActionError(`部分任务未完成：${result.errors.join("；")}`);
-        }
-      } catch (err) {
-        console.error("Fetch news failed:", err);
-        setActionError(err instanceof Error ? err.message : "抓取失败");
-      } finally {
-        setIsFetching(false);
-      }
-    },
-    [refreshData],
+  const zh = language === "zh";
+  const query = useSearchParams().toString();
+  const filtered = filterSession(items, new URLSearchParams(query));
+  const limit = page.query === query ? page.limit : 10;
+  const visible = filtered.slice(0, limit);
+  const stats = sessionStats(items);
+  const busy = isFetching || isAnalyzing || singleBusy;
+  const loadMore = useCallback(
+    () =>
+      setPage((previous) => ({
+        query,
+        limit: (previous.query === query ? previous.limit : 10) + 10,
+      })),
+    [query],
   );
 
-  const reanalyzeAll = useCallback(
-    async (secret: string) => {
-      if (analysisLock.current) return;
-      const newsIds = visibleIds
-        .filter((id) => !processedIds.includes(id))
-        .slice(0, 10);
-      if (!newsIds.length) {
-        setActionNotice("当前已加载新闻均已处理，请向下滚动加载下一批。");
-        return;
-      }
-      analysisLock.current = true;
-      setIsResetting(true);
-      setActionError(null);
-      try {
-        const res: Response = await fetch("/api/reanalyze", {
+  useEffect(() => () => controller.current?.abort(), []);
+  const reset = () => {
+    controller.current?.abort();
+    generation.current++;
+    lock.current = false;
+    setItems([]);
+    setFetchedAt(null);
+    setProcessedIds([]);
+    setPage({ query, limit: 10 });
+    setActionError(null);
+    setNotice(null);
+    setPendingAction(null);
+    setAdminKey("");
+    setLastRefresh(new Date());
+  };
+  const onAnalyzed = (updated: NewsItemData) => {
+    setItems((previous) =>
+      previous.map((item) => (item.id === updated.id ? updated : item)),
+    );
+    setProcessedIds((previous) => [...new Set([...previous, updated.id])]);
+  };
+  const performAction = async (secret: string, action: "fetch" | "analyze") => {
+    if (lock.current || singleBusy) return;
+    const batch = visible
+      .filter((item) => !processedIds.includes(item.id))
+      .slice(0, 10);
+    if (action === "analyze" && batch.length === 0) {
+      setNotice(
+        zh
+          ? "当前已加载新闻均已处理，请向下滚动加载下一批。"
+          : "Scroll to load the next batch.",
+      );
+      return;
+    }
+    lock.current = true;
+    const currentGeneration = generation.current;
+    const requestController = new AbortController();
+    controller.current = requestController;
+    setIsFetching(action === "fetch");
+    setIsAnalyzing(action === "analyze");
+    setActionError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(
+        action === "fetch" ? "/api/session/news" : "/api/session/analyze",
+        {
           method: "POST",
           headers: {
             Authorization: `Bearer ${secret}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ newsIds }),
-        });
-        if (!res.ok) throw new Error(`本批分析中断 (${res.status})，请重试。`);
-        const batch: { succeeded: number; failed: number } = await res.json();
-        setProcessedIds((previous) => [...new Set([...previous, ...newsIds])]);
-        await refreshData();
-        setActionNotice(
-          `本批 ${newsIds.length} 条处理完成：成功 ${batch.succeeded} 条，失败 ${batch.failed} 条。向下滚动可加载新闻，再点击按钮才会分析下一批。`,
+          body:
+            action === "analyze"
+              ? JSON.stringify({ items: batch.map(toAnalysisInput) })
+              : undefined,
+          signal: requestController.signal,
+          cache: "no-store",
+        },
+      );
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(
+          response.status === 401
+            ? zh
+              ? "管理员密钥不正确，请检查 ADMIN_SECRET。"
+              : "Incorrect administrator key."
+            : result.error ||
+                result.errors?.join("；") ||
+                (zh ? "请求失败，请稍后重试。" : "Request failed."),
         );
-      } catch (err) {
-        console.error("Re-analyze failed:", err);
-        setActionError(err instanceof Error ? err.message : "重分析失败");
-      } finally {
-        analysisLock.current = false;
-        setIsResetting(false);
+      if (generation.current !== currentGeneration) return;
+      if (action === "fetch") {
+        setItems(result.items);
+        setFetchedAt(result.fetchedAt);
+        setProcessedIds([]);
+        setPage({ query, limit: 10 });
+        if (result.errors.length) setActionError(result.errors.join("；"));
+        setNotice(
+          zh
+            ? `已加载最新 ${result.items.length} 条新闻，仅在当前页面保留。`
+            : `Loaded ${result.items.length} latest articles for this page.`,
+        );
+      } else {
+        const updates = new Map<string, NewsItemData>(
+          result.items.map((item: NewsItemData) => [item.id, item]),
+        );
+        setItems((previous) =>
+          previous.map((item) => updates.get(item.id) ?? item),
+        );
+        setProcessedIds((previous) => [
+          ...new Set([...previous, ...batch.map((item) => item.id)]),
+        ]);
+        if (result.errors.length)
+          setActionError(
+            [
+              ...new Set(
+                result.errors.map((error: { error: string }) => error.error),
+              ),
+            ].join("；"),
+          );
+        setNotice(
+          zh
+            ? `本批完成：成功 ${result.succeeded} 条，失败 ${result.failed} 条。结果仅在当前页面保留。`
+            : `Batch complete: ${result.succeeded} succeeded, ${result.failed} failed. Results stay in this page only.`,
+        );
       }
-    },
-    [refreshData, visibleIds, processedIds],
-  );
-
-  // Auto-poll every 2 minutes
-  useEffect(() => {
-    pollRef.current = setInterval(refreshData, POLL_INTERVAL_MS);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [refreshData]);
-
-  // Refresh when user returns to tab
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") refreshData();
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () =>
-      document.removeEventListener("visibilitychange", handleVisibility);
-  }, [refreshData]);
+      setLastRefresh(new Date());
+    } catch (error) {
+      if (
+        !requestController.signal.aborted &&
+        generation.current === currentGeneration
+      )
+        setActionError(error instanceof Error ? error.message : "请求失败");
+    } finally {
+      if (generation.current === currentGeneration) {
+        lock.current = false;
+        setIsFetching(false);
+        setIsAnalyzing(false);
+      }
+    }
+  };
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
       <DashboardHeader
-        totalNews={stats.totalNews}
-        bullishCount={stats.bullishCount}
-        bearishCount={stats.bearishCount}
-        neutralCount={stats.neutralCount}
-        lastIngestedAt={stats.lastIngestedAt}
+        {...stats}
+        lastIngestedAt={fetchedAt}
         lastRefresh={lastRefresh}
-        isRefreshing={isRefreshing}
-        onRefresh={refreshData}
+        isRefreshing={busy}
+        onRefresh={reset}
         isFetching={isFetching}
         onFetchNews={() => {
-          setActionNotice(null);
+          setNotice(null);
           setPendingAction("fetch");
         }}
-        isResetting={isResetting}
+        isResetting={isAnalyzing || singleBusy}
         onReanalyzeAll={() => {
-          setActionNotice(null);
-          setPendingAction("reanalyze");
+          if (!items.length)
+            setNotice(zh ? "请先抓取最新新闻。" : "Fetch news first.");
+          else {
+            setNotice(null);
+            setPendingAction("analyze");
+          }
         }}
       />
-
+      <p role="status" className="text-sm text-muted-foreground">
+        {zh
+          ? "新闻和分析结果仅在当前页面保留，刷新后清空。抓取不调用 AI；滚动每次显示 10 条，点击分析才处理下一批。"
+          : "News and analysis stay in this page only and clear on reload. Fetching and scrolling do not call AI; analyze up to 10 articles per click."}
+      </p>
       {pendingAction && (
         <form
           className="space-y-2 rounded border border-border p-3"
           onSubmit={(event) => {
             event.preventDefault();
-            const secret = adminKey;
+            const key = adminKey;
             const action = pendingAction;
             setAdminKey("");
             setPendingAction(null);
-            if (action === "fetch") void fetchNews(secret);
-            else void reanalyzeAll(secret);
+            void performAction(key, action);
           }}
         >
           <label htmlFor="admin-key" className="block text-sm">
-            {language === "zh" ? "管理员密钥" : "Administrator key"}
+            {zh
+              ? "管理员密钥（ADMIN_SECRET）"
+              : "Administrator key (ADMIN_SECRET)"}
           </label>
           <input
             id="admin-key"
@@ -215,56 +230,52 @@ export function DashboardClient({
             className="w-full rounded border border-border bg-background p-2 text-sm"
           />
           <p className="text-xs text-muted-foreground">
-            {pendingAction === "reanalyze"
-              ? "本次只分析已加载新闻中的下一批，最多 10 条，可能产生 API 费用。滚动加载不会触发分析。"
-              : language === "zh"
-                ? "密钥仅用于本次请求，不会保存在浏览器中。"
-                : "The key is used for this request and is not stored in your browser."}
+            {pendingAction === "analyze"
+              ? zh
+                ? "只分析已加载新闻中的下一批，最多 10 条，可能产生 API 费用。"
+                : "Analyze up to 10 loaded articles. API charges may apply."
+              : zh
+                ? "重新抓取会替换本页新闻和分析结果，不会调用 AI。"
+                : "Fetching replaces this page's news and analysis, without calling AI."}
           </p>
           <div className="flex gap-2">
-            <button
-              type="submit"
-              className="rounded border border-border px-3 py-1 text-sm"
-            >
-              {language === "zh" ? "开始" : "Start"}
+            <button type="submit" className="rounded border px-3 py-1 text-sm">
+              {zh ? "开始" : "Start"}
             </button>
             <button
               type="button"
+              className="rounded border px-3 py-1 text-sm"
               onClick={() => {
                 setAdminKey("");
                 setPendingAction(null);
               }}
-              className="rounded border border-border px-3 py-1 text-sm"
             >
-              {language === "zh" ? "取消" : "Cancel"}
+              {zh ? "取消" : "Cancel"}
             </button>
           </div>
         </form>
       )}
-      <NewsFilter sources={sources} />
-
+      <NewsFilter
+        sources={[...new Set(items.map((item) => item.source))].sort()}
+      />
       {actionError && (
         <p role="alert" className="text-sm text-destructive">
           {actionError}
         </p>
       )}
-      {actionNotice && (
+      {notice && (
         <p role="status" className="text-sm">
-          {actionNotice}
+          {notice}
         </p>
       )}
-      <p role="status" className="text-sm text-muted-foreground">
-        {isResetting
-          ? "正在处理本批新闻（最多 10 条），完成后自动停止…"
-          : "每次点击只分析一批（最多 10 条）；向下滚动每次加载 10 条，加载不调用 AI。"}
-      </p>
       <NewsTimeline
-        initialData={initialData}
-        refreshVersion={refreshVersion}
-        onItemsChange={onItemsChange}
-        onAnalysisComplete={() => {
-          void refreshData();
-        }}
+        items={visible}
+        total={filtered.length}
+        hasFetched={fetchedAt !== null}
+        busy={isFetching || isAnalyzing}
+        onLoadMore={loadMore}
+        onAnalyzed={onAnalyzed}
+        onSingleBusyChange={setSingleBusy}
       />
     </div>
   );

@@ -120,7 +120,12 @@ export function DashboardHeader({
             onClick={onRefresh}
             disabled={isRefreshing}
             className="h-6 w-6"
-            aria-label="Refresh"
+            aria-label={language === "zh" ? "清空本页新闻" : "Clear this page"}
+            title={
+              language === "zh"
+                ? "清空本页新闻和分析结果"
+                : "Clear news and analysis in this page"
+            }
           >
             <RefreshCw
               className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`}
