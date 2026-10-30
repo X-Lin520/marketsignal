@@ -91,7 +91,11 @@ export function safeDiagnostic(
   return {
     event:
       code === "OUTPUT_ACCEPTED" ? "model_output_accepted" : "analysis_failure",
-    model: "deepseek-flash",
+    model:
+      process.env.AI_MODEL ||
+      (process.env.AI_PROVIDER?.trim().toLowerCase() === "openai"
+        ? "gpt-4o-mini"
+        : "deepseek-flash"),
     code,
     stage: diagnosticStages[code],
     operation: ["ingest", "analyze", "reanalyze"].includes(

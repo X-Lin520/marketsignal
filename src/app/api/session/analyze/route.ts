@@ -3,17 +3,14 @@ import { authorized } from "@/lib/auth";
 import { analyzeNewsItem } from "@/lib/ai/client";
 import { safeAiError } from "@/lib/ai/errors";
 import { readBatch } from "@/lib/session/news";
+import { aiConfig } from "@/lib/ai/config";
 
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
   if (!authorized(request, process.env.ADMIN_SECRET))
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (
-    process.env.ENABLE_AI !== "true" ||
-    !process.env.OPENAI_API_KEY ||
-    process.env.OPENAI_API_KEY === "sk-..."
-  )
+  if (process.env.ENABLE_AI !== "true" || !aiConfig().configured)
     return NextResponse.json(
       { error: "AI 尚未配置或已停用。" },
       { status: 503 },

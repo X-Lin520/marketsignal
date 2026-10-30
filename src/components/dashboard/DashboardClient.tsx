@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { DashboardHeader } from "./DashboardHeader";
 import { NewsTimeline } from "./NewsTimeline";
+import { AiSetup } from "./AiSetup";
 import { useLanguage } from "@/providers/language-provider";
 import {
   filterSession,
@@ -203,6 +204,7 @@ export function DashboardClient() {
           ? "新闻和分析结果仅在当前页面保留，刷新后清空。抓取不调用 AI；滚动每次显示 10 条，点击分析才处理下一批。"
           : "News and analysis stay in this page only and clear on reload. Fetching and scrolling do not call AI; analyze up to 10 articles per click."}
       </p>
+      <AiSetup />
       {pendingAction && (
         <form
           className="space-y-2 rounded border border-border p-3"
