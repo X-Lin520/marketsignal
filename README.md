@@ -1,5 +1,7 @@
 # MarketSignal
 
+**简体中文** | [English](README.en.md)
+
 MarketSignal 是一个按需抓取财经新闻的工具，可使用 DeepSeek 或 OpenAI 生成摘要、市场情绪和影响板块分析，支持自行部署。
 
 **[查看网站](https://marketsignal-sage.vercel.app/) · [新手部署指南](DEPLOY_GUIDE.md)**
